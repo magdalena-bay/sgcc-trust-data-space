@@ -43,9 +43,9 @@ sgcc-trust-data-space/
 
 - `frontend`：前端门户、审计页面、授权页面、可视化大屏、Agent 页面
 - `backend/platform-api`：统一业务入口、任务编排、审计、权限与用户管理
-- `backend/blockchain-service`：DID/VC、合约调用、中继链、链上审计
-- `services/privacy-service`：AES、MA-CP-ABE、Paillier、撤销治理
-- `services/fl-service`：FRLDRC、PFL-EPM、训练与推理接口
+- `backend/blockchain-service`：DID/VC、区域链与中继链合约调用、跨链协同、链上审计
+- `services/privacy-service`：AES、MA-CP-ABE、Paillier、撤销治理、链下对象封装
+- `services/fl-service`：联邦智能分析主线，覆盖预测与监测两类训练与推理接口
 - `services/agent-service`：AI Agent 编排、报告生成、自然语言交互
 - `contracts`：联盟链智能合约
 - `docs`：方案、接口、架构、会议纪要、计划文档
