@@ -9,6 +9,7 @@ import com.sgcc.platform.dto.AccessRequest;
 import com.sgcc.platform.dto.AccessResponse;
 import com.sgcc.platform.dto.ResourceDetailResponse;
 import com.sgcc.platform.dto.ResourceSummaryResponse;
+import com.sgcc.platform.dto.ResourceVerkleAuditResponse;
 import com.sgcc.platform.dto.ResourceVerkleResponse;
 import com.sgcc.platform.dto.SystemStatusResponse;
 import com.sgcc.platform.dto.UploadRequest;
@@ -19,10 +20,10 @@ import com.sgcc.platform.mapper.AccessAuditMapper;
 import com.sgcc.platform.mapper.DataResourceMapper;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import com.sgcc.platform.config.AppProperties;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -235,6 +236,98 @@ public class DemoResourceService {
                 .build();
     }
 
+    public ResourceVerkleAuditResponse getVerkleAudit(String dataId) {
+        DataResourceEntity resource = findResource(dataId);
+        String proofKey = proofKey(resource.getHdValue());
+        String redisProofJson = redisTemplate.opsForValue().get(proofKey);
+        boolean redisProofExists = redisProofJson != null && !redisProofJson.isBlank();
+
+        String packageJson = ipfsClient.getJson(resource.getCid());
+        Map<String, Object> packagePayload = readMap(packageJson);
+        String ipfsPackageHash = sha256Hex(packageJson);
+        String ipfsPolicyHash = String.valueOf(packagePayload.get("policyHash"));
+
+        List<DataResourceEntity> resources = listRegionResources(resource.getRegion());
+        List<Map<String, String>> items = resources.stream()
+                .map(item -> Map.of("key", item.getDataId(), "value", item.getHdValue()))
+                .toList();
+        Map<String, Object> rebuiltCommitments = privacyClient.commitments(items);
+        String rebuiltRoot = String.valueOf(rebuiltCommitments.get("root"));
+        Map<String, Object> rebuiltProofs = castMap(rebuiltCommitments.get("proofs"));
+        Object rebuiltProof = rebuiltProofs.get(resource.getDataId());
+        String rebuiltProofJson = toJson(rebuiltProof);
+
+        Map<String, Object> regionAnchor = blockchainGatewayService.getAnchor(resource.getRegion(), resource.getDataId());
+        Map<String, Object> relayAnchor = blockchainGatewayService.getAnchor("relay", resource.getDataId());
+        String regionChainRoot = stringValue(regionAnchor.get("root"));
+        String relayChainRoot = stringValue(relayAnchor.get("root"));
+
+        boolean regionChainAnchorExists = Boolean.TRUE.equals(regionAnchor.get("exists"));
+        boolean relayChainAnchorExists = Boolean.TRUE.equals(relayAnchor.get("exists"));
+        boolean mysqlHdMatchesPackageHash = safeEquals(resource.getHdValue(), resource.getPackageHash());
+        boolean mysqlPackageHashMatchesIpfsHash = safeEquals(resource.getPackageHash(), ipfsPackageHash);
+        boolean mysqlPolicyHashMatchesIpfsPolicyHash = safeEquals(resource.getPolicyHash(), ipfsPolicyHash);
+        boolean redisProofMatchesRebuilt = false;
+        if (redisProofExists && rebuiltProof != null) {
+            redisProofMatchesRebuilt = readProof(redisProofJson).equals(rebuiltProof);
+        }
+
+        boolean proofVerifiesAgainstMysqlRoot = redisProofExists && verifyProof(resource, redisProofJson, resource.getRoot());
+        boolean proofVerifiesAgainstRegionChainRoot = redisProofExists && verifyProof(resource, redisProofJson, regionChainRoot);
+        boolean proofVerifiesAgainstRelayChainRoot = redisProofExists && verifyProof(resource, redisProofJson, relayChainRoot);
+
+        boolean rebuiltRootMatchesMysqlRoot = safeEquals(rebuiltRoot, resource.getRoot());
+        boolean rebuiltRootMatchesRegionChainRoot = safeEquals(rebuiltRoot, regionChainRoot);
+        boolean mysqlRelayRootMatchesRelayChainRoot = safeEquals(resource.getRelayRoot(), relayChainRoot);
+
+        boolean overallPassed = redisProofExists
+                && mysqlHdMatchesPackageHash
+                && mysqlPackageHashMatchesIpfsHash
+                && mysqlPolicyHashMatchesIpfsPolicyHash
+                && redisProofMatchesRebuilt
+                && rebuiltRootMatchesMysqlRoot
+                && rebuiltRootMatchesRegionChainRoot
+                && mysqlRelayRootMatchesRelayChainRoot
+                && proofVerifiesAgainstMysqlRoot
+                && proofVerifiesAgainstRegionChainRoot
+                && proofVerifiesAgainstRelayChainRoot
+                && regionChainAnchorExists
+                && relayChainAnchorExists;
+
+        return ResourceVerkleAuditResponse.builder()
+                .dataId(resource.getDataId())
+                .region(resource.getRegion())
+                .cid(resource.getCid())
+                .hdValue(resource.getHdValue())
+                .redisProofKey(proofKey)
+                .mysqlPackageHash(resource.getPackageHash())
+                .ipfsPackageHash(ipfsPackageHash)
+                .mysqlPolicyHash(resource.getPolicyHash())
+                .ipfsPolicyHash(ipfsPolicyHash)
+                .mysqlRoot(resource.getRoot())
+                .rebuiltRoot(rebuiltRoot)
+                .regionChainRoot(regionChainRoot)
+                .mysqlRelayRoot(resource.getRelayRoot())
+                .relayChainRoot(relayChainRoot)
+                .redisProofExists(redisProofExists)
+                .regionChainAnchorExists(regionChainAnchorExists)
+                .relayChainAnchorExists(relayChainAnchorExists)
+                .mysqlHdMatchesPackageHash(mysqlHdMatchesPackageHash)
+                .mysqlPackageHashMatchesIpfsHash(mysqlPackageHashMatchesIpfsHash)
+                .mysqlPolicyHashMatchesIpfsPolicyHash(mysqlPolicyHashMatchesIpfsPolicyHash)
+                .redisProofMatchesRebuilt(redisProofMatchesRebuilt)
+                .rebuiltRootMatchesMysqlRoot(rebuiltRootMatchesMysqlRoot)
+                .rebuiltRootMatchesRegionChainRoot(rebuiltRootMatchesRegionChainRoot)
+                .mysqlRelayRootMatchesRelayChainRoot(mysqlRelayRootMatchesRelayChainRoot)
+                .proofVerifiesAgainstMysqlRoot(proofVerifiesAgainstMysqlRoot)
+                .proofVerifiesAgainstRegionChainRoot(proofVerifiesAgainstRegionChainRoot)
+                .proofVerifiesAgainstRelayChainRoot(proofVerifiesAgainstRelayChainRoot)
+                .overallPassed(overallPassed)
+                .redisProofJson(redisProofJson)
+                .rebuiltProofJson(rebuiltProofJson)
+                .build();
+    }
+
     private Map<String, Object> buildPackage(String region, String dataId, UploadRequest request) {
         Map<String, Object> metadata = Map.of(
                 "dataId", dataId,
@@ -360,6 +453,18 @@ public class DemoResourceService {
         return "verkle-proof:" + hdValue;
     }
 
+    private boolean verifyProof(DataResourceEntity resource, String proofJson, String root) {
+        if (root == null || root.isBlank()) {
+            return false;
+        }
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("key", resource.getDataId());
+        payload.put("value", resource.getHdValue());
+        payload.put("proof", readProof(proofJson));
+        payload.put("root", root);
+        return Boolean.TRUE.equals(privacyClient.verify(payload).get("verified"));
+    }
+
     private Map<String, Object> readMap(String json) {
         try {
             return objectMapper.readValue(json, new TypeReference<>() {
@@ -372,5 +477,35 @@ public class DemoResourceService {
     @SuppressWarnings("unchecked")
     private Map<String, Object> castMap(Object value) {
         return (Map<String, Object>) value;
+    }
+
+    private String toJson(Object value) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("failed to serialize json", ex);
+        }
+    }
+
+    private String sha256Hex(String value) {
+        try {
+            java.security.MessageDigest digest = java.security.MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            StringBuilder builder = new StringBuilder();
+            for (byte current : hash) {
+                builder.append(String.format("%02x", current));
+            }
+            return builder.toString();
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("sha-256 unavailable", ex);
+        }
+    }
+
+    private String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private boolean safeEquals(String left, String right) {
+        return left != null && left.equals(right);
     }
 }

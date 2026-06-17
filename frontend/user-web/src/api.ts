@@ -3,6 +3,7 @@ import type {
   AccessResponse,
   ResourceDetail,
   ResourceSummary,
+  ResourceVerkleAudit,
   ResourceVerkle,
   SystemStatus,
   UploadRequest
@@ -38,6 +39,10 @@ export function fetchResourceDetail(dataId: string): Promise<ResourceDetail> {
 
 export function fetchResourceVerkle(dataId: string): Promise<ResourceVerkle> {
   return request<ResourceVerkle>(`/api/demo/resources/${dataId}/verkle`);
+}
+
+export function fetchResourceVerkleAudit(dataId: string): Promise<ResourceVerkleAudit> {
+  return request<ResourceVerkleAudit>(`/api/demo/resources/${dataId}/verkle-audit`);
 }
 
 export function fetchSystemStatus(): Promise<SystemStatus> {

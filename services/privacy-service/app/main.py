@@ -144,7 +144,9 @@ def build_demo_commitment(leaves: List[CommitmentLeaf]) -> Dict[str, Dict[str, o
             next_level.append(
                 {
                     "hash": _sha256_hex(f"{left_hash}{right_hash}".encode("utf-8")),
-                    "leafKeys": [*left_node["leafKeys"], *right_node["leafKeys"]],
+                    "leafKeys": [*left_node["leafKeys"], *right_node["leafKeys"]]
+                    if i + 1 < len(current_level)
+                    else [*left_node["leafKeys"]],
                 }
             )
 

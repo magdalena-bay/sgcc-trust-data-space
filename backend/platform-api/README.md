@@ -25,6 +25,8 @@
 - `POST /api/demo/upload`
 - `GET /api/demo/resources`
 - `GET /api/demo/resources/{dataId}`
+- `GET /api/demo/resources/{dataId}/verkle`
+- `GET /api/demo/resources/{dataId}/verkle-audit`
 - `POST /api/demo/access`
 
 补充说明：
@@ -37,6 +39,18 @@
 2. `privacy-service` 是否在线
 3. `IPFS gateway` 是否在线
 4. 当前后端正在使用哪些依赖地址
+
+`/api/demo/resources/{dataId}/verkle-audit`
+
+用于对单条资源执行 Verkle 相关一致性审计。它会重新读取 IPFS 包、重建当前区域的 demo commitment，并对比：
+
+1. MySQL 中的 `HD_i/packageHash/policyHash/root/relayRoot`
+2. Redis 中的 `verkle-proof:{HD_i}`
+3. 区域链中的 `root`
+4. relay 链中的 `root`
+5. proof 分别针对 MySQL root、区域链 root、relay root 的校验结果
+
+返回里的 `overallPassed=true` 才表示这条资源当前在 4 库与链上锚定视角下是一致的。
 
 ## Run
 

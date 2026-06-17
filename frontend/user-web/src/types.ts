@@ -42,6 +42,39 @@ export interface ResourceVerkle {
   chainAnchorExists: boolean;
 }
 
+export interface ResourceVerkleAudit {
+  dataId: string;
+  region: string;
+  cid: string;
+  hdValue: string;
+  redisProofKey: string;
+  mysqlPackageHash: string;
+  ipfsPackageHash: string;
+  mysqlPolicyHash: string;
+  ipfsPolicyHash: string;
+  mysqlRoot: string;
+  rebuiltRoot: string;
+  regionChainRoot: string;
+  mysqlRelayRoot: string;
+  relayChainRoot: string;
+  redisProofExists: boolean;
+  regionChainAnchorExists: boolean;
+  relayChainAnchorExists: boolean;
+  mysqlHdMatchesPackageHash: boolean;
+  mysqlPackageHashMatchesIpfsHash: boolean;
+  mysqlPolicyHashMatchesIpfsPolicyHash: boolean;
+  redisProofMatchesRebuilt: boolean;
+  rebuiltRootMatchesMysqlRoot: boolean;
+  rebuiltRootMatchesRegionChainRoot: boolean;
+  mysqlRelayRootMatchesRelayChainRoot: boolean;
+  proofVerifiesAgainstMysqlRoot: boolean;
+  proofVerifiesAgainstRegionChainRoot: boolean;
+  proofVerifiesAgainstRelayChainRoot: boolean;
+  overallPassed: boolean;
+  redisProofJson: string;
+  rebuiltProofJson: string;
+}
+
 export interface AccessRequest {
   dataId: string;
   requesterOrg: string;

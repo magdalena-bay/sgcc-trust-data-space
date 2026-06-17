@@ -5,6 +5,7 @@ import com.sgcc.platform.dto.AccessResponse;
 import com.sgcc.platform.dto.ResourceDetailResponse;
 import com.sgcc.platform.dto.ResourceSummaryResponse;
 import com.sgcc.platform.dto.ResourceVerkleResponse;
+import com.sgcc.platform.dto.ResourceVerkleAuditResponse;
 import com.sgcc.platform.dto.SystemStatusResponse;
 import com.sgcc.platform.dto.UploadRequest;
 import com.sgcc.platform.dto.UploadResponse;
@@ -55,6 +56,11 @@ public class DemoDataController {
     @GetMapping("/resources/{dataId}/verkle")
     public ResourceVerkleResponse getVerkle(@PathVariable String dataId) {
         return demoResourceService.getVerkle(dataId);
+    }
+
+    @GetMapping("/resources/{dataId}/verkle-audit")
+    public ResourceVerkleAuditResponse getVerkleAudit(@PathVariable String dataId) {
+        return demoResourceService.getVerkleAudit(dataId);
     }
 
     @PostMapping("/access")

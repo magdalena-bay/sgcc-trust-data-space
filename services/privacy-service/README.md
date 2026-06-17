@@ -23,6 +23,21 @@
 - `POST /api/privacy/verify`
 - `POST /api/privacy/decrypt`
 
+## Verkle-compatible demo commitment 测试
+
+本模块已补充 `unittest` 测试，用来验证当前演示版 commitment 至少满足：
+
+1. 同一批 `(data_id, HD_i)` 无论输入顺序如何，排序后得到稳定 root。
+2. 正确 proof 能通过 root 校验。
+3. 错误 value、错误 root、被篡改 sibling 都会校验失败。
+
+运行方式：
+
+```bash
+cd services/privacy-service
+python -m unittest discover -s tests -v
+```
+
 ## Run
 
 在服务器上：
