@@ -1,69 +1,124 @@
 # sgcc-trust-data-space
 
-面向能源可信数据空间的多方安全协同与隐私保护项目骨架仓库。
+面向能源可信数据空间的全链路 MVP 工程。
 
-当前仓库只建立了工程框架，不包含正式业务代码。目标是先统一：
+当前这版已经不只是“目录骨架”，而是已经打通了下面这条最小可运行主线：
 
-- 目录结构
-- 模块边界
-- 文档位置
-- 部署入口
-- Git 协作基础
+`前端上传 -> 浏览器端 AES 加密 -> Spring Boot 主后端编排 -> Python 隐私服务 -> MySQL / Redis / PostgreSQL / IPFS -> FISCO BCOS 链上锚定 -> 授权访问 -> 完整性验证 -> 解密展示`
 
-## 目录结构
+## 当前技术栈
+
+- `frontend/user-web`
+  `Vue 3 + TypeScript + Vite + Element Plus + ECharts`
+- `backend/platform-api`
+  `Java 17 + Spring Boot 3 + MyBatis Plus`
+- `services/privacy-service`
+  `Python 3.10/3.11 + FastAPI`
+- `blockchain`
+  `FISCO BCOS + WeBASE-Front + WeCross`
+
+## 当前已经实现的能力
+
+1. 前端支持浏览器端先做 `AES-GCM` 加密，再上传密文正文。
+2. 后端会把密文包写入 `IPFS`，把业务索引写入 `MySQL`。
+3. 后端会把 `HD_i -> ProofD_i` 的证明映射写入 `Redis`。
+4. 后端会把上传与访问审计影子日志写入 `PostgreSQL`。
+5. 后端会通过 `WeBASE-Front` 调用三条 `FISCO BCOS` 链上的锚定合约。
+6. 访问时会先做策略判断，再做完整性验证，最后才执行解密。
+7. 前端可直接展示解密后的曲线数据。
+
+## 四类存储和链上职责
+
+- `MySQL`
+  负责 `data_resource`、`access_audit`、`chain_contract_registry`
+- `Redis`
+  负责保存 `verkle-proof:{packageHash}` 这样的证明键值
+- `IPFS`
+  负责保存完整密文包 `Package`
+- `PostgreSQL`
+  负责保存 `shadow_audit_log`
+- `FISCO BCOS`
+  负责保存资源锚点、根值和访问审计
+
+## 当前实现中的“可运行占位”
+
+这点必须明确说明，避免后面团队误以为已经是最终密码学版本。
+
+1. `CT_ABE` 当前是 `MVP_POLICY_WRAPPED_DEK`
+   用 AES-GCM 包装 `DEK`，并把策略表达式作为 AAD 绑定。
+2. `Verkle` 当前是 `Verkle-compatible demo commitment`
+   保留了 `data_id -> HD_i -> ProofD_i -> Vroot` 的工程落点和校验流程，但还不是正式多项式承诺实现。
+
+也就是说：
+
+`工程链路已经真实跑通，但密码学内核后面仍可以继续替换升级。`
+
+## 本地目录结构
 
 ```text
 sgcc-trust-data-space/
-├─ docs/
-│  ├─ architecture/
-│  ├─ planning/
-│  ├─ api/
-│  └─ meeting-notes/
-├─ frontend/
-├─ backend/
-│  ├─ platform-api/
-│  └─ blockchain-service/
-├─ services/
-│  ├─ privacy-service/
-│  ├─ fl-service/
-│  └─ agent-service/
-├─ contracts/
-├─ deploy/
-│  ├─ scripts/
-│  └─ nginx/
-├─ scripts/
-├─ tests/
-├─ data/
-│  ├─ raw/
-│  └─ processed/
-└─ logs/
+├─ frontend/user-web
+├─ backend/platform-api
+├─ services/privacy-service
+├─ contracts/common
+├─ deploy
+├─ docs
+├─ scripts
+├─ tests
+└─ data
 ```
 
-## 模块职责
+## 当前阅读这份 README 时你必须先知道
 
-- `frontend`：前端门户、审计页面、授权页面、可视化大屏、Agent 页面
-- `backend/platform-api`：统一业务入口、任务编排、审计、权限与用户管理
-- `backend/blockchain-service`：DID/VC、区域链与中继链合约调用、跨链协同、链上审计
-- `services/privacy-service`：AES、MA-CP-ABE、Paillier、撤销治理、链下对象封装
-- `services/fl-service`：联邦智能分析主线，覆盖预测与监测两类训练与推理接口
-- `services/agent-service`：AI Agent 编排、报告生成、自然语言交互
-- `contracts`：联盟链智能合约
-- `docs`：方案、接口、架构、会议纪要、计划文档
-- `deploy`：部署脚本、环境模板、网关配置
+这套系统是“活环境”，不是静态样板。
 
-## 分支建议
+所以你以后不要默认：
 
-- `main`：稳定演示版本
-- `develop`：集成开发版本
-- `feature/*`：个人或小组功能分支
+1. 某条测试数据的 root 永远不变
+2. 某个 proof JSON 永远不变
+3. 某篇测试文档里写过的哈希值今天还一定一样
 
-## 下一步建议
+你必须先做健康检查，再做手工测试。
 
-1. 建立 GitHub 或 Gitee 私有仓库
-2. 将本仓库推送到远程
-3. 由各小组在对应模块下初始化各自工程
-4. 优先打通最小主线闭环
+目前最重要的两个检查是：
 
-## 最小主线闭环
+1. `curl http://127.0.0.1:8088/api/demo/health`
+2. `curl http://127.0.0.1:8010/health`
 
-`DID 注册 -> VC 签发 -> 数据加密上传 -> 链上存证 -> 授权访问 -> 撤销 -> 审计`
+如果 `8010` 不通，那么上传与访问都可能返回 `500`。
+
+## 服务器当前运行端口
+
+- 前端开发服务器：`5173`
+- 平台主后端：`8088`
+- 隐私服务：`8010`
+- WeBASE-Front：
+  - `5100` `qingdao`
+  - `5101` `weifang`
+  - `5102` `relay`
+- IPFS：
+  - API `5001`
+  - Gateway `8080`
+- Redis：`6379`
+- PostgreSQL：`5432`
+- MySQL：`3306`
+
+## 启动顺序建议
+
+1. 先确认链、WeBASE、Redis、PostgreSQL、IPFS、MySQL 已运行。
+2. 启动 `privacy-service`。
+3. 启动 `platform-api`。
+4. 启动 `frontend/user-web`。
+
+补充说明：
+
+`privacy-service` 目前在服务器上已经改为 `systemd --user` 托管，不建议再只靠临时终端前台运行。
+
+## 关键文档
+
+- 项目代码与模块说明：
+  [docs/planning/PROJECT_STRUCTURE_AND_TEAM_MAPPING.md](/d:/BIT/张川老师课题组/260511-竞赛-挑战杯-山东电网/sgcc-trust-data-space/docs/planning/PROJECT_STRUCTURE_AND_TEAM_MAPPING.md)
+- 本轮实现与测试结果：
+  [12-全链路MVP实现与测试结果.md](/d:/BIT/张川老师课题组/260511-竞赛-挑战杯-山东电网/12-全链路MVP实现与测试结果.md)
+- Verkle 底层与手工测试：
+  [13-Verkle树底层实现说明与手工测试指南.md](/d:/BIT/张川老师课题组/260511-竞赛-挑战杯-山东电网/13-Verkle树底层实现说明与手工测试指南.md)
