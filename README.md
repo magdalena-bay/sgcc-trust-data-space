@@ -122,6 +122,8 @@ sgcc-trust-data-space/
 
 `privacy-service` 目前在服务器上已经改为 `systemd --user` 托管，不建议再只靠临时终端前台运行。
 
+如果服务器缺少 `/home/ubuntu/sgcc-trust-data-space/.server.env`，可以先参考项目根目录的 `.server.env.example` 恢复环境变量文件，再启动 `platform-api`。
+
 ## 关键文档
 
 - 项目代码与模块说明：

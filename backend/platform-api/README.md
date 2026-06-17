@@ -82,3 +82,5 @@ nohup java -jar target/platform-api-0.1.0.jar > platform-api.log 2>&1 < /dev/nul
 ```
 
 需要的环境变量见 `src/main/resources/application.yml` 与项目根目录 `.server.env`。
+
+如果服务器上缺少 `.server.env`，可以先用项目根目录的 `.server.env.example` 复制出一份再启动服务。
