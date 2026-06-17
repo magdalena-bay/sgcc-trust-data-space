@@ -18,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -137,12 +138,7 @@ public class BlockchainGatewayService {
     }
 
     private String ensureContract(String chainName) {
-        ChainContractRegistryEntity existing = registryMapper.selectOne(
-                new LambdaQueryWrapper<ChainContractRegistryEntity>()
-                        .eq(ChainContractRegistryEntity::getChainName, chainName)
-                        .eq(ChainContractRegistryEntity::getContractName, "SgccTrustAnchor")
-                        .last("limit 1")
-        );
+        ChainContractRegistryEntity existing = latestRegistryEntry(chainName);
         if (existing != null) {
             return existing.getContractAddress();
         }
@@ -177,6 +173,45 @@ public class BlockchainGatewayService {
         entity.setCreatedAt(LocalDateTime.now());
         registryMapper.insert(entity);
         return contractAddress;
+    }
+
+    public boolean isChainReadable(String chainName) {
+        try {
+            getAnchor(chainName, "__HEALTH_PROBE__");
+            return true;
+        } catch (IllegalStateException ex) {
+            return false;
+        }
+    }
+
+    public String getRegisteredContractAddress(String chainName) {
+        ChainContractRegistryEntity entry = latestRegistryEntry(chainName);
+        return entry == null ? "" : entry.getContractAddress();
+    }
+
+    public long countRegistryRecords(String chainName) {
+        Long count = registryMapper.selectCount(
+                new LambdaQueryWrapper<ChainContractRegistryEntity>()
+                        .eq(ChainContractRegistryEntity::getChainName, chainName)
+                        .eq(ChainContractRegistryEntity::getContractName, "SgccTrustAnchor")
+        );
+        return count == null ? 0L : count;
+    }
+
+    public Map<String, String> contractRegistrySummary() {
+        Map<String, String> summary = new LinkedHashMap<>();
+        summary.put("qingdao", getRegisteredContractAddress("qingdao"));
+        summary.put("weifang", getRegisteredContractAddress("weifang"));
+        summary.put("relay", getRegisteredContractAddress("relay"));
+        return summary;
+    }
+
+    public Map<String, Long> contractRegistryCountSummary() {
+        Map<String, Long> summary = new LinkedHashMap<>();
+        summary.put("qingdao", countRegistryRecords("qingdao"));
+        summary.put("weifang", countRegistryRecords("weifang"));
+        summary.put("relay", countRegistryRecords("relay"));
+        return summary;
     }
 
     private List<Map<String, Object>> compileContract(String baseUrl) {
@@ -243,6 +278,17 @@ public class BlockchainGatewayService {
             case "relay" -> appProperties.getBlockchain().getRelay().getBaseUrl();
             default -> throw new IllegalArgumentException("unsupported chain: " + chainName);
         };
+    }
+
+    private ChainContractRegistryEntity latestRegistryEntry(String chainName) {
+        return registryMapper.selectOne(
+                new LambdaQueryWrapper<ChainContractRegistryEntity>()
+                        .eq(ChainContractRegistryEntity::getChainName, chainName)
+                        .eq(ChainContractRegistryEntity::getContractName, "SgccTrustAnchor")
+                        .orderByDesc(ChainContractRegistryEntity::getCreatedAt)
+                        .orderByDesc(ChainContractRegistryEntity::getId)
+                        .last("limit 1")
+        );
     }
 
     private String loadContractSource() {

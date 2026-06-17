@@ -84,8 +84,16 @@ sgcc-trust-data-space/
 
 1. `curl http://127.0.0.1:8088/api/demo/health`
 2. `curl http://127.0.0.1:8010/health`
+3. `curl http://127.0.0.1:8088/api/demo/system-status`
 
 如果 `8010` 不通，那么上传与访问都可能返回 `500`。
+
+`system-status` 现在还会补充：
+
+1. `MySQL / Redis / PostgreSQL / IPFS API / IPFS Gateway` 是否在线
+2. `qingdao / weifang / relay` 三条链是否可读
+3. 三条链当前登记到的合约地址和登记条数
+4. 是否检测到跨链合约地址复用
 
 ## 服务器当前运行端口
 

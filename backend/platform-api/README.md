@@ -38,7 +38,10 @@
 1. `platform-api` 是否在线
 2. `privacy-service` 是否在线
 3. `IPFS gateway` 是否在线
-4. 当前后端正在使用哪些依赖地址
+4. `IPFS API / MySQL / Redis / PostgreSQL` 是否在线
+5. `qingdao / weifang / relay` 三条链是否可读
+6. 当前三条链登记到的合约地址与登记条数
+7. 是否检测到跨链合约地址复用现象
 
 `/api/demo/resources/{dataId}/verkle-audit`
 
@@ -51,6 +54,11 @@
 5. proof 分别针对 MySQL root、区域链 root、relay root 的校验结果
 
 返回里的 `overallPassed=true` 才表示这条资源当前在 4 库与链上锚定视角下是一致的。
+
+补充说明：
+
+- `SchemaUpgradeService` 已改为直接复用 Spring DataSource，不再在代码中单独硬编码 MySQL 连接串和口令。
+- `system-status` 现在不只是“接口活着”，而是会显式给出存储层、链层和合约登记状态。
 
 ## Run
 

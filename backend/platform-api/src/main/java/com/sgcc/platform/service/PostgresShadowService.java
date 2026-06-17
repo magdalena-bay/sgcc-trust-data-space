@@ -44,6 +44,14 @@ public class PostgresShadowService {
         insert("ACCESS", dataId, region, detail);
     }
 
+    public boolean isHealthy() {
+        try (Connection connection = openConnection()) {
+            return connection.isValid(2);
+        } catch (SQLException ex) {
+            return false;
+        }
+    }
+
     private void insert(String eventType, String dataId, String region, String detail) {
         try (Connection connection = openConnection();
              PreparedStatement statement = connection.prepareStatement("""

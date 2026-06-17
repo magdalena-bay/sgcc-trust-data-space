@@ -73,6 +73,19 @@ public class IpfsClient {
         }
     }
 
+    public boolean isApiHealthy() {
+        try {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(appProperties.getIpfs().getApiUrl() + "/api/v0/version"))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .build();
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            return response.statusCode() < 400 && response.body().contains("Version");
+        } catch (IOException | InterruptedException ex) {
+            return false;
+        }
+    }
+
     private byte[] buildMultipartBody(String boundary, String fileName, String content) throws IOException {
         ByteArrayOutputStream buffer = new ByteArrayOutputStream();
         buffer.write(("--" + boundary + "\r\n").getBytes(StandardCharsets.UTF_8));

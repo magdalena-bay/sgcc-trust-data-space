@@ -18,14 +18,19 @@ import com.sgcc.platform.entity.AccessAuditEntity;
 import com.sgcc.platform.entity.DataResourceEntity;
 import com.sgcc.platform.mapper.AccessAuditMapper;
 import com.sgcc.platform.mapper.DataResourceMapper;
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import com.sgcc.platform.config.AppProperties;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -43,12 +48,25 @@ public class DemoResourceService {
     private final PostgresShadowService postgresShadowService;
     private final ObjectMapper objectMapper;
     private final AppProperties appProperties;
+    private final DataSource dataSource;
 
     public Map<String, Object> health() {
         return Map.of("status", "ok", "service", "platform-api");
     }
 
     public SystemStatusResponse systemStatus() {
+        boolean privacyHealthy = privacyClient.isHealthy();
+        boolean ipfsGatewayHealthy = ipfsClient.isHealthy();
+        boolean ipfsApiHealthy = ipfsClient.isApiHealthy();
+        boolean mysqlHealthy = isMysqlHealthy();
+        boolean redisHealthy = isRedisHealthy();
+        boolean postgresHealthy = postgresShadowService.isHealthy();
+        boolean qingdaoChainHealthy = blockchainGatewayService.isChainReadable("qingdao");
+        boolean weifangChainHealthy = blockchainGatewayService.isChainReadable("weifang");
+        boolean relayChainHealthy = blockchainGatewayService.isChainReadable("relay");
+        Map<String, String> contractRegistry = blockchainGatewayService.contractRegistrySummary();
+        Map<String, Long> contractRegistryCount = blockchainGatewayService.contractRegistryCountSummary();
+
         return SystemStatusResponse.builder()
                 .platformApi("ok")
                 .privacyServiceBaseUrl(appProperties.getPrivacy().getBaseUrl())
@@ -58,9 +76,28 @@ public class DemoResourceService {
                 .relayWebaseUrl(appProperties.getBlockchain().getRelay().getBaseUrl())
                 .components(Map.of(
                         "platformApi", true,
-                        "privacyService", privacyClient.isHealthy(),
-                        "ipfsGateway", ipfsClient.isHealthy()
+                        "privacyService", privacyHealthy,
+                        "ipfsGateway", ipfsGatewayHealthy,
+                        "ipfsApi", ipfsApiHealthy,
+                        "mysql", mysqlHealthy,
+                        "redis", redisHealthy,
+                        "postgres", postgresHealthy
                 ))
+                .storageStatus(Map.of(
+                        "mysql", mysqlHealthy,
+                        "redis", redisHealthy,
+                        "postgres", postgresHealthy,
+                        "ipfsApi", ipfsApiHealthy,
+                        "ipfsGateway", ipfsGatewayHealthy
+                ))
+                .chainStatus(Map.of(
+                        "qingdao", qingdaoChainHealthy,
+                        "weifang", weifangChainHealthy,
+                        "relay", relayChainHealthy
+                ))
+                .contractRegistry(contractRegistry)
+                .contractRegistryCount(contractRegistryCount)
+                .crossChainContractAddressReuseDetected(hasCrossChainAddressReuse(contractRegistry))
                 .build();
     }
 
@@ -507,5 +544,37 @@ public class DemoResourceService {
 
     private boolean safeEquals(String left, String right) {
         return left != null && left.equals(right);
+    }
+
+    private boolean isMysqlHealthy() {
+        try (Connection connection = dataSource.getConnection()) {
+            return connection.isValid(2);
+        } catch (SQLException ex) {
+            return false;
+        }
+    }
+
+    private boolean isRedisHealthy() {
+        try {
+            String pong = redisTemplate.execute((RedisCallback<String>) connection -> connection.ping());
+            return pong != null && "PONG".equalsIgnoreCase(pong);
+        } catch (Exception ex) {
+            return false;
+        }
+    }
+
+    private boolean hasCrossChainAddressReuse(Map<String, String> contractRegistry) {
+        Map<String, String> seen = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : contractRegistry.entrySet()) {
+            String address = entry.getValue();
+            if (address == null || address.isBlank()) {
+                continue;
+            }
+            if (seen.containsKey(address)) {
+                return true;
+            }
+            seen.put(address, entry.getKey());
+        }
+        return false;
     }
 }

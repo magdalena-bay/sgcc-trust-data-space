@@ -1,8 +1,8 @@
 package com.sgcc.platform.service;
 
 import jakarta.annotation.PostConstruct;
+import javax.sql.DataSource;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -19,14 +19,11 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class SchemaUpgradeService {
 
-    private static final String MYSQL_URL =
-            "jdbc:mysql://127.0.0.1:3306/sgcc_platform?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8";
-    private static final String MYSQL_USERNAME = "sgcc_app";
-    private static final String MYSQL_PASSWORD = "22b607b72faabc1d52785a3e7a841ac8";
+    private final DataSource dataSource;
 
     @PostConstruct
     public void ensureVerkleColumns() {
-        try (Connection connection = DriverManager.getConnection(MYSQL_URL, MYSQL_USERNAME, MYSQL_PASSWORD)) {
+        try (Connection connection = dataSource.getConnection()) {
             ensureHdValueColumn(connection);
             backfillHdValue(connection);
         } catch (SQLException ex) {

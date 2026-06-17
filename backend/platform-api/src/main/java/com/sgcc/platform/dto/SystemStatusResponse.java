@@ -14,4 +14,9 @@ public class SystemStatusResponse {
     private String weifangWebaseUrl;
     private String relayWebaseUrl;
     private Map<String, Boolean> components;
+    private Map<String, Boolean> storageStatus;
+    private Map<String, Boolean> chainStatus;
+    private Map<String, String> contractRegistry;
+    private Map<String, Long> contractRegistryCount;
+    private boolean crossChainContractAddressReuseDetected;
 }
