@@ -1,6 +1,12 @@
 import unittest
 
-from app.main import CommitmentLeaf, build_demo_commitment, verify_demo_commitment
+from app.main import (
+    COMMITMENT_ENGINE_VERSION,
+    COMMITMENT_SCHEME,
+    CommitmentLeaf,
+    build_demo_commitment,
+    verify_demo_commitment,
+)
 
 
 class DemoCommitmentTest(unittest.TestCase):
@@ -14,6 +20,8 @@ class DemoCommitmentTest(unittest.TestCase):
         first = build_demo_commitment(leaves)
         second = build_demo_commitment(list(reversed(leaves)))
 
+        self.assertEqual(first["scheme"], COMMITMENT_SCHEME)
+        self.assertEqual(first["engineVersion"], COMMITMENT_ENGINE_VERSION)
         self.assertEqual(first["root"], second["root"])
         self.assertEqual(set(first["proofs"].keys()), {"D-QD-001", "D-QD-002", "D-QD-003"})
 
@@ -61,6 +69,15 @@ class DemoCommitmentTest(unittest.TestCase):
                 root=commitment["root"],
             )
         )
+
+    def test_empty_commitment_keeps_scheme_metadata(self):
+        commitment = build_demo_commitment([])
+
+        self.assertEqual(commitment["scheme"], COMMITMENT_SCHEME)
+        self.assertEqual(commitment["engineVersion"], COMMITMENT_ENGINE_VERSION)
+        self.assertEqual(commitment["root"], "")
+        self.assertEqual(commitment["proofs"], {})
+        self.assertEqual(commitment["leafHashes"], {})
 
 
 if __name__ == "__main__":

@@ -13,6 +13,9 @@ from pydantic import BaseModel, Field
 
 app = FastAPI(title="sgcc privacy-service", version="0.1.0")
 
+COMMITMENT_SCHEME = "verkle-compatible-demo"
+COMMITMENT_ENGINE_VERSION = "hash-tree-v1"
+
 
 def _b64encode(raw: bytes) -> str:
     return base64.b64encode(raw).decode("utf-8")
@@ -99,7 +102,13 @@ class CommitmentLeaf:
 
 def build_demo_commitment(leaves: List[CommitmentLeaf]) -> Dict[str, Dict[str, object]]:
     if not leaves:
-        return {"root": "", "proofs": {}}
+        return {
+            "scheme": COMMITMENT_SCHEME,
+            "engineVersion": COMMITMENT_ENGINE_VERSION,
+            "root": "",
+            "proofs": {},
+            "leafHashes": {},
+        }
 
     ordered = sorted(leaves, key=lambda item: item.key)
     proofs: Dict[str, Dict[str, object]] = {
@@ -160,6 +169,8 @@ def build_demo_commitment(leaves: List[CommitmentLeaf]) -> Dict[str, Dict[str, o
         proof["root"] = root
 
     return {
+        "scheme": COMMITMENT_SCHEME,
+        "engineVersion": COMMITMENT_ENGINE_VERSION,
         "root": root,
         "proofs": proofs,
         "leafHashes": {item.key: item.leaf_hash for item in ordered},
@@ -215,6 +226,8 @@ class VerifyRequest(BaseModel):
     value: str
     proof: Union[List[Dict[str, str]], Dict[str, object]]
     root: str
+    scheme: Optional[str] = None
+    engineVersion: Optional[str] = None
 
 
 class DecryptRequest(BaseModel):
@@ -293,7 +306,16 @@ def commitments_endpoint(request: CommitmentRequest) -> dict:
 
 @app.post("/api/privacy/verify")
 def verify_endpoint(request: VerifyRequest) -> dict:
+    if request.scheme and request.scheme != COMMITMENT_SCHEME:
+        return {
+            "verified": False,
+            "scheme": request.scheme,
+            "engineVersion": request.engineVersion or "",
+            "error": "unsupported commitment scheme",
+        }
     return {
+        "scheme": request.scheme or COMMITMENT_SCHEME,
+        "engineVersion": request.engineVersion or COMMITMENT_ENGINE_VERSION,
         "verified": verify_demo_commitment(
             key=request.key,
             value=request.value,

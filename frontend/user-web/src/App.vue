@@ -2,13 +2,14 @@
 import { nextTick, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import * as echarts from "echarts";
-import { API_BASE, accessResource, fetchResourceDetail, fetchResourceVerkle, fetchResources, fetchSystemStatus, uploadResource } from "./api";
+import { API_BASE, accessResource, fetchResourceDetail, fetchResourceVerkle, fetchResourceVerkleAudit, fetchResources, fetchSystemStatus, uploadResource } from "./api";
 import { browserCryptoStatus, encryptForUpload } from "./crypto";
 import type {
   AccessRequest,
   AccessResponse,
   ResourceDetail,
   ResourceSummary,
+  ResourceVerkleAudit,
   SystemStatus,
   ResourceVerkle,
   UploadRequest
@@ -17,6 +18,7 @@ import type {
 const resources = ref<ResourceSummary[]>([]);
 const selectedResource = ref<ResourceDetail | null>(null);
 const selectedVerkle = ref<ResourceVerkle | null>(null);
+const selectedVerkleAudit = ref<ResourceVerkleAudit | null>(null);
 const accessResult = ref<AccessResponse | null>(null);
 const chartRef = ref<HTMLDivElement | null>(null);
 const browserEncryptionStatus = ref("未检测");
@@ -56,6 +58,7 @@ async function loadSystemStatus() {
 async function openDetail(dataId: string) {
   selectedResource.value = await fetchResourceDetail(dataId);
   selectedVerkle.value = await fetchResourceVerkle(dataId);
+  selectedVerkleAudit.value = await fetchResourceVerkleAudit(dataId);
   accessForm.dataId = dataId;
 }
 
@@ -69,8 +72,9 @@ function refreshBrowserEncryptionStatus() {
   }
 
   browserEncryptionStatus.value = status.isSecureContext
-    ? "浏览器原生 Web Crypto 不可用，将改用前端 JS AES 兜底"
-    : "当前页面不是安全上下文，已准备使用前端 JS AES 兜底";
+    ? "浏览器原生 Web Crypto 不可用，已切换为后端测试直传"
+    : "当前页面不是安全上下文，已切换为后端测试直传";
+  useBrowserEncryption.value = false;
 }
 
 async function submitUpload() {
@@ -84,12 +88,8 @@ async function submitUpload() {
       payload.ivBase64 = encrypted.ivBase64;
       payload.dekBase64 = encrypted.dekBase64;
       payload.dataHash = encrypted.dataHash;
-      lastUploadMode.value =
-        encrypted.encryptionMode === "webcrypto" ? "浏览器 Web Crypto AES-GCM" : "浏览器 JS AES-GCM 兜底";
-
-      if (encrypted.encryptionMode === "js-fallback") {
-        ElMessage.warning("当前页面不适合原生 Web Crypto，已改用浏览器端 JS AES-GCM 兜底加密，不再退回后端明文直传。");
-      } else {
+      lastUploadMode.value = "浏览器 Web Crypto AES-GCM";
+      if (encrypted.encryptionMode === "webcrypto") {
         ElMessage.success("本次上传已使用浏览器端 Web Crypto AES-GCM。");
       }
     } else {
@@ -99,6 +99,9 @@ async function submitUpload() {
     await uploadResource(payload);
     ElMessage.success("上传并锚定成功");
     await loadResources();
+    if (payload.dataId) {
+      await openDetail(payload.dataId);
+    }
   } catch (error) {
     ElMessage.error(String(error));
   }
@@ -237,8 +240,8 @@ onMounted(() => {
             />
           </el-form-item>
           <div class="mode-hint">
-            当前说明：开启时会优先在浏览器侧加密；若当前页面无法使用原生 Web Crypto，则改用浏览器内 JS AES-GCM 兜底。
-            只有你手动关闭开关时，才会走后端测试直传。
+            当前说明：开启时会优先使用浏览器原生 Web Crypto 做 AES-GCM 加密；
+            若当前浏览器环境不支持，则页面会自动切换为后端测试直传，避免再出现上传时报错。
           </div>
           <el-button type="primary" @click="submitUpload">上传并锚定</el-button>
         </el-form>
@@ -328,6 +331,31 @@ onMounted(() => {
           <span>ProofD_i(JSON)</span>
           <strong>{{ selectedVerkle.proofJson }}</strong>
         </div>
+      </div>
+    </section>
+
+    <section class="chart-card" v-if="selectedVerkleAudit">
+      <div class="panel-title">7. Verkle 一致性审计</div>
+      <div class="detail-grid audit-grid">
+        <div><span>overallPassed</span><strong>{{ selectedVerkleAudit.overallPassed }}</strong></div>
+        <div><span>redisProofExists</span><strong>{{ selectedVerkleAudit.redisProofExists }}</strong></div>
+        <div><span>redisProofMatchesRebuilt</span><strong>{{ selectedVerkleAudit.redisProofMatchesRebuilt }}</strong></div>
+        <div><span>rebuiltRootMatchesMysqlRoot</span><strong>{{ selectedVerkleAudit.rebuiltRootMatchesMysqlRoot }}</strong></div>
+        <div><span>rebuiltRootMatchesRegionChainRoot</span><strong>{{ selectedVerkleAudit.rebuiltRootMatchesRegionChainRoot }}</strong></div>
+        <div><span>mysqlRelayRootMatchesRelayChainRoot</span><strong>{{ selectedVerkleAudit.mysqlRelayRootMatchesRelayChainRoot }}</strong></div>
+        <div><span>proofVerifiesAgainstMysqlRoot</span><strong>{{ selectedVerkleAudit.proofVerifiesAgainstMysqlRoot }}</strong></div>
+        <div><span>proofVerifiesAgainstRegionChainRoot</span><strong>{{ selectedVerkleAudit.proofVerifiesAgainstRegionChainRoot }}</strong></div>
+        <div><span>proofVerifiesAgainstRelayChainRoot</span><strong>{{ selectedVerkleAudit.proofVerifiesAgainstRelayChainRoot }}</strong></div>
+        <div><span>regionChainAnchorExists</span><strong>{{ selectedVerkleAudit.regionChainAnchorExists }}</strong></div>
+        <div><span>relayChainAnchorExists</span><strong>{{ selectedVerkleAudit.relayChainAnchorExists }}</strong></div>
+        <div><span>mysqlPackageHashMatchesIpfsHash</span><strong>{{ selectedVerkleAudit.mysqlPackageHashMatchesIpfsHash }}</strong></div>
+        <div><span>mysqlPolicyHashMatchesIpfsPolicyHash</span><strong>{{ selectedVerkleAudit.mysqlPolicyHashMatchesIpfsPolicyHash }}</strong></div>
+        <div><span>mysqlRoot</span><strong>{{ selectedVerkleAudit.mysqlRoot }}</strong></div>
+        <div><span>rebuiltRoot</span><strong>{{ selectedVerkleAudit.rebuiltRoot }}</strong></div>
+        <div><span>regionChainRoot</span><strong>{{ selectedVerkleAudit.regionChainRoot }}</strong></div>
+        <div><span>relayChainRoot</span><strong>{{ selectedVerkleAudit.relayChainRoot }}</strong></div>
+        <div class="wide"><span>redisProofJson</span><strong>{{ selectedVerkleAudit.redisProofJson }}</strong></div>
+        <div class="wide"><span>rebuiltProofJson</span><strong>{{ selectedVerkleAudit.rebuiltProofJson }}</strong></div>
       </div>
     </section>
   </div>
@@ -464,6 +492,11 @@ h1 {
 .chart-box {
   width: 100%;
   height: 360px;
+}
+
+.audit-grid strong {
+  font-family: "Consolas", "Menlo", monospace;
+  font-size: 12px;
 }
 
 @media (max-width: 1100px) {

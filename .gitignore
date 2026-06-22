@@ -48,3 +48,4 @@ data/processed/*
 *.7z
 *.rar
 *.csv
+backend/platform-api/src/main/resources/static

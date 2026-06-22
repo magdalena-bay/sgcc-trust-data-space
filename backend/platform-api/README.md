@@ -55,6 +55,12 @@
 
 返回里的 `overallPassed=true` 才表示这条资源当前在 4 库与链上锚定视角下是一致的。
 
+补充：
+
+- Redis 中当前保存的是 proof envelope，而不再只是“裸 proof JSON”。
+- envelope 外层带有 `scheme`、`engineVersion`、`proofType`、`leafKey`、`valueDigest`、`root` 与 `proofPayload`。
+- 这样后续如果把 `Verkle-compatible demo commitment` 替换成正式密码学实现，平台主后端仍可以复用同一套 Redis 键、审计接口和验证调用边界。
+
 补充说明：
 
 - `SchemaUpgradeService` 已改为直接复用 Spring DataSource，不再在代码中单独硬编码 MySQL 连接串和口令。
@@ -63,24 +69,28 @@
 ## Run
 
 ```bash
-cd ~/sgcc-trust-data-space/backend/platform-api
-set -a
-source /home/ubuntu/sgcc-trust-data-space/.server.env
-set +a
+cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/backend/platform-api
+[ -f /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env && set +a
 mvn clean package -DskipTests
-java -jar target/platform-api-0.1.0.jar
+java -Xms256m -Xmx1024m -jar target/platform-api-0.1.0.jar
 ```
 
 服务器后台运行方式示例：
 
 ```bash
-cd ~/sgcc-trust-data-space/backend/platform-api
-set -a
-source /home/ubuntu/sgcc-trust-data-space/.server.env
-set +a
-nohup java -jar target/platform-api-0.1.0.jar > platform-api.log 2>&1 < /dev/null &
+cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/backend/platform-api
+[ -f /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env && set +a
+setsid nohup bash -lc 'cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/backend/platform-api && [ -f /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env && set +a; exec java -Xms256m -Xmx1024m -jar target/platform-api-0.1.0.jar >> /tmp/sgcc-platform-live.log 2>&1' < /dev/null > /dev/null 2>&1 &
 ```
 
 需要的环境变量见 `src/main/resources/application.yml` 与项目根目录 `.server.env`。
 
-如果服务器上缺少 `.server.env`，可以先用项目根目录的 `.server.env.example` 复制出一份再启动服务。
+如果服务器上缺少 `.server.env`，可以先用当前代码目录下的 `.server.env.example` 复制出一份再启动服务。
+
+当前运行注意事项：
+
+1. `platform-api` 启动阶段会主动访问 `WeBASE-Front`，所以 `5100/5101/5102` 不可用时，应用会在 Spring 初始化阶段直接退出，而不是“先启动后部分接口报错”。
+2. 当前服务器先不要把 `platform-api` 写成开机自启 service，尤其不要直接复用旧路径 `/home/ubuntu/sgcc-trust-data-space/...` 下的历史 service 文件。
+3. 如需临时验证，优先使用上面的手动命令短时启动，验证完立即停止。
+4. 当前推荐把前端构建产物同步到 `src/main/resources/static/`，由 `platform-api` 直接托管页面，避免服务器常驻 `vite`。
+5. 如果通过 SSH 脚本远端重启 `platform-api`，建议使用 `setsid + nohup`，避免进程在部署会话退出时被一并带停。

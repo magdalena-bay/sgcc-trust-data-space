@@ -102,3 +102,11 @@ export interface SystemStatus {
   relayWebaseUrl: string;
   components: Record<string, boolean>;
 }
+
+export interface DeploymentSummary {
+  localRepo: string;
+  frontendDir: string;
+  backendStaticDir: string;
+  remoteHost?: string;
+  remoteRepoDir?: string;
+}

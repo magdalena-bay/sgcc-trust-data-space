@@ -43,24 +43,28 @@ python -m unittest discover -s tests -v
 在服务器上：
 
 ```bash
-cd ~/sgcc-trust-data-space/services/privacy-service
-python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8010
+cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/services/privacy-service
+python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 
-更推荐的服务器运行方式：
+当前更推荐的服务器验证方式：
 
-当前线上已经改成 `systemd --user` 托管，服务名为：
-
-`privacy-service.service`
+1. 先手动短时启动
+2. 用 `curl http://127.0.0.1:8010/health` 验证
+3. 验证完成后立即停止
 
 常用检查命令：
 
 ```bash
-systemctl --user status privacy-service.service --no-pager -l
 curl http://127.0.0.1:8010/health
 ```
 
 如果这里不正常，后端的 `/api/demo/upload` 和 `/api/demo/access` 都可能直接返回 `500`。
+
+注意：
+
+1. `2026-06-22` 起，服务器端先不要把 `privacy-service` 重新设为 `systemd --user` 自启。
+2. 如果未来要重新托管，必须先确认 service 文件路径已经改到当前代码目录，并且没有隐藏的 `Restart=always` 风险。
 
 可选环境变量：
 
