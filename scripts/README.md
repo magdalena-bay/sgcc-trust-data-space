@@ -32,7 +32,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\sync_frontend_dist_to_backend
 1. 先执行 `sync_frontend_dist_to_backend.ps1`
 2. 打包当前仓库源码
 3. 上传到远端：
-   `/home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space`
+   `/home/ubuntu/sgcc-trust-data-space`
 4. 远端重建 `platform-api`
 5. 用“受控后台”方式重启 `8088`
 6. 自动执行健康检查和首页检查
@@ -54,3 +54,34 @@ powershell -ExecutionPolicy Bypass -File .\scripts\deploy_frontend_to_server.ps1
    放进 `.gitignore`
 5. 如果脚本执行后失败，优先查看远端日志：
    `/tmp/sgcc-platform-live.log`
+
+### `run_verkle_backend_smoke.ps1`
+
+用途：
+
+1. 通过 `SSH -> 服务器本机 127.0.0.1:8088` 做一次完整后端联调
+2. 自动执行：
+   `health -> system-status -> upload -> detail -> verkle -> verkle-audit -> allowed access -> denied access`
+3. 全程不启动服务器 `vite`
+
+执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_verkle_backend_smoke.ps1
+```
+
+可选参数：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\run_verkle_backend_smoke.ps1 -Region weifang
+```
+
+说明：
+
+1. 当前脚本默认 SSH 到：
+   `152.136.167.239`
+2. 默认远端代码目录是：
+   `/home/ubuntu/sgcc-trust-data-space`
+3. 默认 API 基址使用服务器本机：
+   `http://127.0.0.1:8088`
+4. 这样做是为了避开公网 `8088` 额外网关层干扰，更准确反映真实后端链路状态

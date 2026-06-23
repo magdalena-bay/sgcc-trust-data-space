@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $RemoteHost = "152.136.167.239"
-$RemoteRepoDir = "/home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space"
+$RemoteRepoDir = "/home/ubuntu/sgcc-trust-data-space"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $syncScript = Join-Path $PSScriptRoot "sync_frontend_dist_to_backend.ps1"
@@ -31,7 +31,7 @@ Write-Host "[4/5] Extracting code, rebuilding platform-api, and restarting 8088.
 $remoteDeployScript = @'
 set -euo pipefail
 
-REPO_DIR="/home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space"
+REPO_DIR="/home/ubuntu/sgcc-trust-data-space"
 APP_DIR="$REPO_DIR/backend/platform-api"
 ENV_FILE="$REPO_DIR/.server.env"
 

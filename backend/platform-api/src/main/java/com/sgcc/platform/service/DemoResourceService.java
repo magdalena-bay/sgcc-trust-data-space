@@ -20,7 +20,7 @@ import com.sgcc.platform.mapper.AccessAuditMapper;
 import com.sgcc.platform.mapper.DataResourceMapper;
 import com.sgcc.platform.verkle.CommitmentResult;
 import com.sgcc.platform.verkle.StoredProofEnvelope;
-import com.sgcc.platform.verkle.VerkleProofEnvelopeCodec;
+import com.sgcc.platform.verkle.VerkleEngineGateway;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
@@ -51,7 +51,7 @@ public class DemoResourceService {
     private final ObjectMapper objectMapper;
     private final AppProperties appProperties;
     private final DataSource dataSource;
-    private final VerkleProofEnvelopeCodec proofEnvelopeCodec;
+    private final VerkleEngineGateway verkleEngineGateway;
 
     public Map<String, Object> health() {
         return Map.of("status", "ok", "service", "platform-api");
@@ -199,7 +199,7 @@ public class DemoResourceService {
         // Redis stores the Verkle-compatible proof as HD_i -> ProofD_i.
         String proofKey = proofKey(resource.getHdValue());
         String proofJson = redisTemplate.opsForValue().get(proofKey);
-        StoredProofEnvelope proofEnvelope = proofEnvelopeCodec.read(proofJson);
+        StoredProofEnvelope proofEnvelope = verkleEngineGateway.readEnvelope(proofJson);
 
         Map<String, Object> anchor = blockchainGatewayService.getAnchor(resource.getRegion(), resource.getDataId());
         boolean verified = false;
@@ -207,7 +207,7 @@ public class DemoResourceService {
                 && Boolean.TRUE.equals(anchor.get("exists"))
                 && resource.getPackageHash().equals(anchor.get("packageHash"))
                 && resource.getPolicyHash().equals(anchor.get("policyHash"))) {
-            verified = privacyClient.verify(
+            verified = verkleEngineGateway.verify(
                     resource.getDataId(),
                     resource.getHdValue(),
                     proofEnvelope,
@@ -260,14 +260,14 @@ public class DemoResourceService {
     public ResourceVerkleResponse getVerkle(String dataId) {
         DataResourceEntity resource = findResource(dataId);
         String proofKey = proofKey(resource.getHdValue());
-        StoredProofEnvelope proofEnvelope = proofEnvelopeCodec.read(redisTemplate.opsForValue().get(proofKey));
+        StoredProofEnvelope proofEnvelope = verkleEngineGateway.readEnvelope(redisTemplate.opsForValue().get(proofKey));
         Map<String, Object> anchor = blockchainGatewayService.getAnchor(resource.getRegion(), resource.getDataId());
 
         return ResourceVerkleResponse.builder()
                 .dataId(resource.getDataId())
                 .hdValue(resource.getHdValue())
                 .proofKey(proofKey)
-                .proofJson(proofEnvelopeCodec.write(proofEnvelope))
+                .proofJson(verkleEngineGateway.writeEnvelope(proofEnvelope))
                 .regionRoot(resource.getRoot())
                 .relayRoot(resource.getRelayRoot())
                 .chainRoot(String.valueOf(anchor.get("root")))
@@ -278,9 +278,9 @@ public class DemoResourceService {
     public ResourceVerkleAuditResponse getVerkleAudit(String dataId) {
         DataResourceEntity resource = findResource(dataId);
         String proofKey = proofKey(resource.getHdValue());
-        StoredProofEnvelope redisProofEnvelope = proofEnvelopeCodec.read(redisTemplate.opsForValue().get(proofKey));
+        StoredProofEnvelope redisProofEnvelope = verkleEngineGateway.readEnvelope(redisTemplate.opsForValue().get(proofKey));
         boolean redisProofExists = redisProofEnvelope != null;
-        String redisProofJson = proofEnvelopeCodec.write(redisProofEnvelope);
+        String redisProofJson = verkleEngineGateway.writeEnvelope(redisProofEnvelope);
 
         String packageJson = ipfsClient.getJson(resource.getCid());
         Map<String, Object> packagePayload = readMap(packageJson);
@@ -291,11 +291,11 @@ public class DemoResourceService {
         List<Map<String, String>> items = resources.stream()
                 .map(item -> Map.of("key", item.getDataId(), "value", item.getHdValue()))
                 .toList();
-        CommitmentResult rebuiltCommitments = privacyClient.commitments(items);
+        CommitmentResult rebuiltCommitments = verkleEngineGateway.commitments(items);
         String rebuiltRoot = rebuiltCommitments.getRoot();
         StoredProofEnvelope rebuiltProofEnvelope =
-                proofEnvelopeCodec.fromCommitment(rebuiltCommitments, resource.getDataId(), resource.getHdValue());
-        String rebuiltProofJson = proofEnvelopeCodec.write(rebuiltProofEnvelope);
+                verkleEngineGateway.buildEnvelope(rebuiltCommitments, resource.getDataId(), resource.getHdValue());
+        String rebuiltProofJson = verkleEngineGateway.writeEnvelope(rebuiltProofEnvelope);
 
         Map<String, Object> regionAnchor = blockchainGatewayService.getAnchor(resource.getRegion(), resource.getDataId());
         Map<String, Object> relayAnchor = blockchainGatewayService.getAnchor("relay", resource.getDataId());
@@ -308,7 +308,7 @@ public class DemoResourceService {
         boolean mysqlPackageHashMatchesIpfsHash = safeEquals(resource.getPackageHash(), ipfsPackageHash);
         boolean mysqlPolicyHashMatchesIpfsPolicyHash = safeEquals(resource.getPolicyHash(), ipfsPolicyHash);
         boolean redisProofMatchesRebuilt = redisProofExists
-                && proofEnvelopeCodec.equivalent(redisProofEnvelope, rebuiltProofEnvelope);
+                && verkleEngineGateway.equivalent(redisProofEnvelope, rebuiltProofEnvelope);
 
         boolean proofVerifiesAgainstMysqlRoot = redisProofExists && verifyProof(resource, redisProofEnvelope, resource.getRoot());
         boolean proofVerifiesAgainstRegionChainRoot = redisProofExists && verifyProof(resource, redisProofEnvelope, regionChainRoot);
@@ -397,13 +397,13 @@ public class DemoResourceService {
                 // key = data_id, value = HD_i, and HD_i = H(Package).
                 .map(item -> Map.of("key", item.getDataId(), "value", item.getHdValue()))
                 .toList();
-        CommitmentResult commitments = privacyClient.commitments(items);
+        CommitmentResult commitments = verkleEngineGateway.commitments(items);
         String root = commitments.getRoot();
 
         for (DataResourceEntity resource : resources) {
             StoredProofEnvelope envelope =
-                    proofEnvelopeCodec.fromCommitment(commitments, resource.getDataId(), resource.getHdValue());
-            String proofJson = proofEnvelopeCodec.write(envelope);
+                    verkleEngineGateway.buildEnvelope(commitments, resource.getDataId(), resource.getHdValue());
+            String proofJson = verkleEngineGateway.writeEnvelope(envelope);
             String proofKey = proofKey(resource.getHdValue());
             redisTemplate.opsForValue().set(proofKey, proofJson);
 
@@ -484,7 +484,7 @@ public class DemoResourceService {
             return false;
         }
         return proofEnvelope != null
-                && privacyClient.verify(resource.getDataId(), resource.getHdValue(), proofEnvelope, root);
+                && verkleEngineGateway.verify(resource.getDataId(), resource.getHdValue(), proofEnvelope, root);
     }
 
     private Map<String, Object> readMap(String json) {

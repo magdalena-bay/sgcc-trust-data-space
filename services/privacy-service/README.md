@@ -43,7 +43,7 @@ python -m unittest discover -s tests -v
 在服务器上：
 
 ```bash
-cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/services/privacy-service
+cd /home/ubuntu/sgcc-trust-data-space/services/privacy-service
 python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8010
 ```
 

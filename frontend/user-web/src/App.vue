@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref } from "vue";
+import { computed, nextTick, onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
 import * as echarts from "echarts";
 import { API_BASE, accessResource, fetchResourceDetail, fetchResourceVerkle, fetchResourceVerkleAudit, fetchResources, fetchSystemStatus, uploadResource } from "./api";
@@ -12,6 +12,7 @@ import type {
   ResourceVerkleAudit,
   SystemStatus,
   ResourceVerkle,
+  UploadResponse,
   UploadRequest
 } from "./types";
 
@@ -23,7 +24,38 @@ const accessResult = ref<AccessResponse | null>(null);
 const chartRef = ref<HTMLDivElement | null>(null);
 const browserEncryptionStatus = ref("未检测");
 const lastUploadMode = ref("未上传");
+const lastUploadResponse = ref<UploadResponse | null>(null);
 const systemStatus = ref<SystemStatus | null>(null);
+
+const auditCheckMeta = [
+  { key: "redisProofExists", label: "Redis proof 已存在" },
+  { key: "mysqlHdMatchesPackageHash", label: "MySQL HD_i 与 packageHash 一致" },
+  { key: "mysqlPackageHashMatchesIpfsHash", label: "MySQL packageHash 与 IPFS 包一致" },
+  { key: "mysqlPolicyHashMatchesIpfsPolicyHash", label: "MySQL policyHash 与 IPFS policyHash 一致" },
+  { key: "redisProofMatchesRebuilt", label: "Redis proof 与重建 proof 一致" },
+  { key: "rebuiltRootMatchesMysqlRoot", label: "重建 root 与 MySQL root 一致" },
+  { key: "rebuiltRootMatchesRegionChainRoot", label: "重建 root 与区域链 root 一致" },
+  { key: "mysqlRelayRootMatchesRelayChainRoot", label: "MySQL relayRoot 与 relay 链 root 一致" },
+  { key: "proofVerifiesAgainstMysqlRoot", label: "proof 可对 MySQL root 验证" },
+  { key: "proofVerifiesAgainstRegionChainRoot", label: "proof 可对区域链 root 验证" },
+  { key: "proofVerifiesAgainstRelayChainRoot", label: "proof 可对 relay 链 root 验证" },
+  { key: "regionChainAnchorExists", label: "区域链锚点存在" },
+  { key: "relayChainAnchorExists", label: "relay 链锚点存在" }
+] as const;
+
+const auditCheckRows = computed(() => {
+  const audit = selectedVerkleAudit.value;
+  if (!audit) {
+    return [];
+  }
+  return auditCheckMeta.map((item) => ({
+    ...item,
+    passed: Boolean(audit[item.key])
+  }));
+});
+
+const auditPassedCount = computed(() => auditCheckRows.value.filter((item) => item.passed).length);
+const auditFailedChecks = computed(() => auditCheckRows.value.filter((item) => !item.passed));
 
 const uploadForm = reactive<UploadRequest>({
   region: "qingdao",
@@ -56,10 +88,60 @@ async function loadSystemStatus() {
 }
 
 async function openDetail(dataId: string) {
-  selectedResource.value = await fetchResourceDetail(dataId);
-  selectedVerkle.value = await fetchResourceVerkle(dataId);
-  selectedVerkleAudit.value = await fetchResourceVerkleAudit(dataId);
+  const [detail, verkle, audit] = await Promise.all([
+    fetchResourceDetail(dataId),
+    fetchResourceVerkle(dataId),
+    fetchResourceVerkleAudit(dataId)
+  ]);
+  selectedResource.value = detail;
+  selectedVerkle.value = verkle;
+  selectedVerkleAudit.value = audit;
   accessForm.dataId = dataId;
+  accessResult.value = null;
+}
+
+async function refreshSelectedResource() {
+  if (!selectedResource.value) {
+    return;
+  }
+  await openDetail(selectedResource.value.dataId);
+}
+
+function applyUploadPreset(region: "qingdao" | "weifang") {
+  if (region === "qingdao") {
+    uploadForm.region = "qingdao";
+    uploadForm.ownerDid = "did:weid:qingdao:4001";
+    uploadForm.dataType = "load_curve";
+    uploadForm.policyOrg = "SGCC_dispatch_center";
+    uploadForm.policyRole = "load_analyst";
+    uploadForm.policyGrantStatus = "valid";
+    uploadForm.plaintext = "time,load\n10:00,1400\n10:15,1420\n10:30,1410";
+    return;
+  }
+
+  uploadForm.region = "weifang";
+  uploadForm.ownerDid = "did:weid:weifang:5001";
+  uploadForm.dataType = "generation_curve";
+  uploadForm.policyOrg = "SGCC_dispatch_center";
+  uploadForm.policyRole = "dispatch_analyst";
+  uploadForm.policyGrantStatus = "valid";
+  uploadForm.plaintext = "time,power\n14:00,920\n14:15,950\n14:30,980";
+}
+
+function applyAccessPreset(mode: "allowed" | "denied") {
+  if (selectedResource.value) {
+    accessForm.dataId = selectedResource.value.dataId;
+  }
+
+  accessForm.requesterOrg = "SGCC_dispatch_center";
+  accessForm.requesterGrantStatus = "valid";
+
+  if (mode === "allowed") {
+    accessForm.requesterRole = uploadForm.region === "weifang" ? "dispatch_analyst" : "load_analyst";
+    return;
+  }
+
+  accessForm.requesterRole = "guest_viewer";
 }
 
 function refreshBrowserEncryptionStatus() {
@@ -96,12 +178,13 @@ async function submitUpload() {
       lastUploadMode.value = "后端测试直传模式";
     }
 
-    await uploadResource(payload);
+    const response = await uploadResource(payload);
+    lastUploadResponse.value = response;
     ElMessage.success("上传并锚定成功");
     await loadResources();
-    if (payload.dataId) {
-      await openDetail(payload.dataId);
-    }
+    await openDetail(response.dataId);
+    await loadSystemStatus();
+    applyAccessPreset("allowed");
   } catch (error) {
     ElMessage.error(String(error));
   }
@@ -149,6 +232,7 @@ function renderChart(plaintext: string) {
 }
 
 onMounted(() => {
+  applyUploadPreset("qingdao");
   refreshBrowserEncryptionStatus();
   loadSystemStatus();
   loadResources();
@@ -188,6 +272,13 @@ onMounted(() => {
 
     <section class="status-card" v-if="systemStatus">
       <div class="panel-title">0. 当前页面实际连接状态</div>
+      <div class="action-row">
+        <el-button @click="loadSystemStatus">刷新系统状态</el-button>
+        <el-button @click="applyUploadPreset('qingdao')">填充 qingdao 联调样例</el-button>
+        <el-button @click="applyUploadPreset('weifang')">填充 weifang 联调样例</el-button>
+        <el-button @click="applyAccessPreset('allowed')">填充正确权限访问</el-button>
+        <el-button @click="applyAccessPreset('denied')">填充拒绝权限访问</el-button>
+      </div>
       <div class="detail-grid">
         <div><span>前端请求 API 地址</span><strong>{{ API_BASE }}</strong></div>
         <div><span>platform-api</span><strong>{{ systemStatus.platformApi }}</strong></div>
@@ -199,6 +290,18 @@ onMounted(() => {
         <div><span>qingdao WeBASE</span><strong>{{ systemStatus.qingdaoWebaseUrl }}</strong></div>
         <div><span>weifang WeBASE</span><strong>{{ systemStatus.weifangWebaseUrl }}</strong></div>
         <div><span>relay WeBASE</span><strong>{{ systemStatus.relayWebaseUrl }}</strong></div>
+        <div><span>跨链合约地址复用告警</span><strong>{{ systemStatus.crossChainContractAddressReuseDetected }}</strong></div>
+      </div>
+      <div v-if="lastUploadResponse" class="upload-summary">
+        <div class="panel-subtitle">最近一次上传回执</div>
+        <div class="detail-grid">
+          <div><span>dataId</span><strong>{{ lastUploadResponse.dataId }}</strong></div>
+          <div><span>region</span><strong>{{ lastUploadResponse.region }}</strong></div>
+          <div><span>cid</span><strong>{{ lastUploadResponse.cid }}</strong></div>
+          <div><span>root</span><strong>{{ lastUploadResponse.root }}</strong></div>
+          <div><span>relayRoot</span><strong>{{ lastUploadResponse.relayRoot }}</strong></div>
+          <div><span>message</span><strong>{{ lastUploadResponse.message }}</strong></div>
+        </div>
       </div>
     </section>
 
@@ -263,7 +366,10 @@ onMounted(() => {
     <section class="grid-layout">
       <el-card class="panel-card" shadow="hover">
         <template #header>
-          <div class="panel-title">3. 资源详情</div>
+          <div class="card-header-row">
+            <div class="panel-title">3. 资源详情</div>
+            <el-button size="small" @click="refreshSelectedResource">刷新当前资源</el-button>
+          </div>
         </template>
         <div v-if="selectedResource" class="detail-grid">
           <div><span>dataId</span><strong>{{ selectedResource.dataId }}</strong></div>
@@ -336,6 +442,26 @@ onMounted(() => {
 
     <section class="chart-card" v-if="selectedVerkleAudit">
       <div class="panel-title">7. Verkle 一致性审计</div>
+      <div class="audit-summary-row">
+        <div class="audit-pill">
+          <span>整体结果</span>
+          <strong>{{ selectedVerkleAudit.overallPassed ? "PASS" : "FAIL" }}</strong>
+        </div>
+        <div class="audit-pill">
+          <span>通过检查</span>
+          <strong>{{ auditPassedCount }}/{{ auditCheckRows.length }}</strong>
+        </div>
+        <div class="audit-pill">
+          <span>失败检查</span>
+          <strong>{{ auditFailedChecks.length }}</strong>
+        </div>
+      </div>
+      <div v-if="auditFailedChecks.length > 0" class="audit-failures">
+        <div class="panel-subtitle">需要优先排查的失败项</div>
+        <div class="failure-list">
+          <span v-for="item in auditFailedChecks" :key="item.key">{{ item.label }}</span>
+        </div>
+      </div>
       <div class="detail-grid audit-grid">
         <div><span>overallPassed</span><strong>{{ selectedVerkleAudit.overallPassed }}</strong></div>
         <div><span>redisProofExists</span><strong>{{ selectedVerkleAudit.redisProofExists }}</strong></div>
@@ -356,6 +482,12 @@ onMounted(() => {
         <div><span>relayChainRoot</span><strong>{{ selectedVerkleAudit.relayChainRoot }}</strong></div>
         <div class="wide"><span>redisProofJson</span><strong>{{ selectedVerkleAudit.redisProofJson }}</strong></div>
         <div class="wide"><span>rebuiltProofJson</span><strong>{{ selectedVerkleAudit.rebuiltProofJson }}</strong></div>
+      </div>
+      <div class="audit-check-grid">
+        <div v-for="item in auditCheckRows" :key="item.key" class="audit-check-card" :class="{ failed: !item.passed }">
+          <span>{{ item.label }}</span>
+          <strong>{{ item.passed ? "PASS" : "FAIL" }}</strong>
+        </div>
       </div>
     </section>
   </div>
@@ -444,6 +576,27 @@ h1 {
   color: #174162;
 }
 
+.panel-subtitle {
+  margin: 18px 0 10px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #174162;
+}
+
+.card-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0 18px;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -494,6 +647,63 @@ h1 {
   height: 360px;
 }
 
+.upload-summary {
+  margin-top: 18px;
+}
+
+.audit-summary-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0 18px;
+}
+
+.audit-pill,
+.audit-check-card,
+.failure-list span {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #f5f9fd;
+}
+
+.audit-pill span,
+.audit-check-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: #5e768d;
+  font-size: 12px;
+}
+
+.audit-failures {
+  margin-bottom: 18px;
+}
+
+.failure-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.failure-list span {
+  background: #fff1ef;
+  color: #b42318;
+}
+
+.audit-check-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.audit-check-card.failed {
+  background: #fff1ef;
+}
+
+.audit-check-card.failed strong {
+  color: #b42318;
+}
+
 .audit-grid strong {
   font-family: "Consolas", "Menlo", monospace;
   font-size: 12px;
@@ -501,7 +711,9 @@ h1 {
 
 @media (max-width: 1100px) {
   .hero-card,
-  .grid-layout {
+  .grid-layout,
+  .audit-summary-row,
+  .audit-check-grid {
     grid-template-columns: 1fr;
   }
 }

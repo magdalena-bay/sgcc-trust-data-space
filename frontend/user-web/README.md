@@ -29,7 +29,7 @@
 ## Run
 
 ```bash
-cd ~/sgcc-trust-data-space/frontend/user-web
+cd /home/ubuntu/sgcc-trust-data-space/frontend/user-web
 npm install
 npm run dev -- --host 0.0.0.0 --port 5173
 ```

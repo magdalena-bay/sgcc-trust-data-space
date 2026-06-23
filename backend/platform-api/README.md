@@ -60,6 +60,12 @@
 - Redis 中当前保存的是 proof envelope，而不再只是“裸 proof JSON”。
 - envelope 外层带有 `scheme`、`engineVersion`、`proofType`、`leafKey`、`valueDigest`、`root` 与 `proofPayload`。
 - 这样后续如果把 `Verkle-compatible demo commitment` 替换成正式密码学实现，平台主后端仍可以复用同一套 Redis 键、审计接口和验证调用边界。
+- 当前 `platform-api` 内部又额外补了一层：
+  `VerkleEngineGateway`
+  也就是说 `DemoResourceService` 现在依赖的是“证明引擎抽象接口”，而不是直接依赖 demo 版 proof 细节。
+- 当前默认实现是：
+  `DemoVerkleEngineGateway`
+  后续如果切到正式密码学版 Verkle，优先替换这里，而不是让业务服务整体返工。
 
 补充说明：
 
@@ -69,8 +75,8 @@
 ## Run
 
 ```bash
-cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/backend/platform-api
-[ -f /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env && set +a
+cd /home/ubuntu/sgcc-trust-data-space/backend/platform-api
+[ -f /home/ubuntu/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space/.server.env && set +a
 mvn clean package -DskipTests
 java -Xms256m -Xmx1024m -jar target/platform-api-0.1.0.jar
 ```
@@ -78,9 +84,9 @@ java -Xms256m -Xmx1024m -jar target/platform-api-0.1.0.jar
 服务器后台运行方式示例：
 
 ```bash
-cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/backend/platform-api
-[ -f /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env && set +a
-setsid nohup bash -lc 'cd /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/backend/platform-api && [ -f /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space/.server.env && set +a; exec java -Xms256m -Xmx1024m -jar target/platform-api-0.1.0.jar >> /tmp/sgcc-platform-live.log 2>&1' < /dev/null > /dev/null 2>&1 &
+cd /home/ubuntu/sgcc-trust-data-space/backend/platform-api
+[ -f /home/ubuntu/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space/.server.env && set +a
+setsid nohup bash -lc 'cd /home/ubuntu/sgcc-trust-data-space/backend/platform-api && [ -f /home/ubuntu/sgcc-trust-data-space/.server.env ] && set -a && source /home/ubuntu/sgcc-trust-data-space/.server.env && set +a; exec java -Xms256m -Xmx1024m -jar target/platform-api-0.1.0.jar >> /tmp/sgcc-platform-live.log 2>&1' < /dev/null > /dev/null 2>&1 &
 ```
 
 需要的环境变量见 `src/main/resources/application.yml` 与项目根目录 `.server.env`。

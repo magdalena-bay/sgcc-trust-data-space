@@ -6,6 +6,7 @@ import type {
   ResourceVerkleAudit,
   ResourceVerkle,
   SystemStatus,
+  UploadResponse,
   UploadRequest
 } from "./types";
 
@@ -49,8 +50,8 @@ export function fetchSystemStatus(): Promise<SystemStatus> {
   return request<SystemStatus>("/api/demo/system-status");
 }
 
-export function uploadResource(payload: UploadRequest) {
-  return request("/api/demo/upload", {
+export function uploadResource(payload: UploadRequest): Promise<UploadResponse> {
+  return request<UploadResponse>("/api/demo/upload", {
     method: "POST",
     body: JSON.stringify(payload)
   });

@@ -144,8 +144,11 @@ sgcc-trust-data-space/
 1. `2026-06-22` 之后，服务器端先不要把 `frontend/user-web`、`platform-api`、`privacy-service` 设置成任何形式的开机自启。
 2. 特别不要把 `vite`、`npm run dev` 或其他开发态 watcher 写进 `systemd`，更不要配 `Restart=always`。
 3. 当前服务器上的有效代码目录是：
-   `/home/ubuntu/sgcc-trust-data-space-sync/sgcc-trust-data-space`
-4. 之前遗留的若干 `systemd` service 仍指向旧目录 `/home/ubuntu/sgcc-trust-data-space/...`，它们现在只能视为历史残留，不能直接当成可用部署入口。
+   `/home/ubuntu/sgcc-trust-data-space`
+4. 之前排障阶段还出现过旧目录与历史 service 文件混用
+   现在统一以：
+   `/home/ubuntu/sgcc-trust-data-space`
+   为准
 5. 建议优先使用“手动启动 -> 健康检查 -> 立即停掉”的短时验证方式，确认链路和资源都稳定后，再单独设计正式托管方案。
 
 如果服务器缺少项目根目录 `.server.env`，可以先参考当前代码目录下的 `.server.env.example` 补出一份，再启动 `platform-api`。
@@ -199,6 +202,135 @@ sgcc-trust-data-space/
 2. 继续禁止前端 `vite` / `npm run dev` 常驻
 3. 前端试用和演示优先走 `platform-api:8088` 托管静态页面
 4. 继续禁止任何未经审核的 `Restart=always` 自启
+
+## 当前 Verkle 联调状态
+
+截至 `2026-06-22`，当前代码已经额外完成两类验证：
+
+1. 页面侧：
+   - `platform-api:8088` 已直接托管最新静态前端
+   - 页面可查看 `verkle` 视图与 `verkle-audit`
+   - 页面可直接填充 `qingdao / weifang` 联调样例
+2. 脚本侧：
+   - `scripts/run_verkle_backend_smoke.ps1`
+   - 已按“SSH 到服务器本机 API”方式跑通 `qingdao` 与 `weifang` 两轮联调
+
+本轮实际跑通的核心结果是：
+
+1. `overallPassed = true`
+2. 正确权限访问：
+   `granted = true, verified = true`
+3. 错误权限访问：
+   `granted = false, verified = true`
+
+这说明当前 Verkle-compatible demo commitment 已经不只是“代码存在”，而是已经可以被页面、接口和脚本三种方式重复验证。
+
+## 能否继续开发其他模块
+
+可以。
+
+当前结论已经足够明确：
+
+`现在可以在 Verkle-compatible demo commitment 的基础上，继续推进区块链、前后端、密码学、隐私保护、AI Agent 等其余模块开发。`
+
+原因不是“demo 版已经等于正式版”，而是：
+
+1. 前后端、MySQL、Redis、IPFS、链上锚定依赖的是稳定语义边界：
+   `dataId / HD_i / proof envelope / root / verify`
+2. 当前 Redis 中保存的不是裸 proof，而是：
+   `scheme + engineVersion + proofType + proofPayload + root`
+3. `platform-api` 并没有把 demo proof 的内部 JSON 结构散落到所有业务模块，而是通过：
+   - `CommitmentResult`
+   - `StoredProofEnvelope`
+   - `VerkleProofEnvelopeCodec`
+   - `VerkleEngineGateway`
+   - `DemoVerkleEngineGateway`
+   这几层收口
+
+也就是说，当前版本已经满足：
+
+`先继续开发其他模块，后续再把 Verkle 证明引擎升级成正式密码学版本。`
+
+## 后续升级正式 Verkle 是否会冲击其他模块
+
+当前代码已经满足“后续可平滑升级”的核心要求。
+
+更准确地说：
+
+1. 需要优先改动的会是：
+   - `services/privacy-service` 内部 commitment / verify 算法
+   - proof 序列化规则
+   - 正式可信参数、承诺依赖或证明类型
+2. 不需要大面积重写的会是：
+   - 前端上传与访问页面
+   - MySQL 主数据落点
+   - Redis proof 键结构
+   - IPFS 包结构
+   - 区域链 / 中继链锚定主流程
+
+因此当前更推荐的策略不是“停下一切先做正式版”，而是：
+
+1. 先继续开发其余框架和业务模块
+2. 同时保持 Verkle 证明边界稳定
+3. 在后续单独一轮里，把 `scheme=verkle-compatible-demo` 升级到正式密码学实现
+
+## 当前是否还需要为了正式 Verkle 暂停其他开发
+
+不建议。
+
+除非你们当前阶段的核心目标改成：
+
+`优先交付正式多项式承诺版 Verkle。`
+
+否则按现在的比赛目标和工程状态，更优先的是：
+
+1. 保持当前全链路持续可验
+2. 继续推进：
+   - DID / VC
+   - MA-CP-ABE
+   - 区块链业务锚定与审计
+   - 前端演示交互
+   - AI Agent 与联邦学习展示链路
+3. 把正式 Verkle 作为“证明引擎升级任务”独立排期
+
+## 当前推荐开发方向
+
+基于当前环境，下一阶段建议按下面顺序推进：
+
+1. 固化当前 Verkle 页面联调、接口验证和脚本化验收
+2. 继续补强 DID / VC 与策略控制链路
+3. 推进 `MVP_POLICY_WRAPPED_DEK -> 更接近正式 MA-CP-ABE` 的接口边界
+4. 推进 AI Agent / 联邦学习模块时，继续复用当前：
+   `dataId / hdValue / root / audit`
+   这些稳定字段
+5. 正式密码学版 Verkle 作为单独子任务收敛在证明引擎层
+
+## 当前 IPFS 到底怎么实现
+
+当前 IPFS 不是公网现成第三方实例，也不是“直接把数据发到网上某个共享节点”。
+
+当前实现方式是：
+
+1. 服务器本机 Docker 容器：
+   `sgcc-ipfs`
+2. 镜像：
+   `ipfs/kubo:release`
+3. 端口映射：
+   - API `127.0.0.1:5001`
+   - Gateway `127.0.0.1:8080`
+4. 数据目录是服务器本机绑定挂载：
+   - `/home/ubuntu/platform-infra/data/ipfs-data -> /data/ipfs`
+   - `/home/ubuntu/platform-infra/data/ipfs-staging -> /export`
+
+所以当前 IPFS 的本质是：
+
+`你们自己的服务器本机上跑着一个 Kubo 容器实例。`
+
+## 当前文档化开发结论
+
+现在最准确的结论是：
+
+`当前 Verkle-compatible demo commitment 已经完成页面联调、接口验证和脚本化验收，可以作为后续区块链、前后端、密码学、隐私保护、AI Agent 等模块继续开发的稳定工程底座；后续若升级正式密码学版 Verkle，改动将主要收敛在证明引擎层，而不会要求其他业务模块整体返工。`
 
 ## 关键文档
 
