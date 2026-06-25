@@ -81,8 +81,8 @@ public class BlockchainGatewayService {
                 dataId,
                 requesterOrg,
                 requesterRole,
-                String.valueOf(verified),
-                String.valueOf(granted)
+                verified,
+                granted
         ));
         payload.put("user", appProperties.getBlockchain().getServiceAddress());
         payload.put("useAes", false);

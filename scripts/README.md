@@ -85,3 +85,52 @@ powershell -ExecutionPolicy Bypass -File .\scripts\run_verkle_backend_smoke.ps1 
 3. 默认 API 基址使用服务器本机：
    `http://127.0.0.1:8088`
 4. 这样做是为了避开公网 `8088` 额外网关层干扰，更准确反映真实后端链路状态
+
+### `measure_onchain_write_tps.ps1`
+
+用途：
+
+1. 只测：
+   `区块链上链写交易本身`
+2. 直接走：
+   `WeBASE /trans/handle`
+3. 不包含：
+   - IPFS
+   - MySQL
+   - Redis
+   - Verkle proof 重建
+   - 解密
+   - 完整上传编排
+
+适用场景：
+
+1. 单独评估：
+   `anchorResource`
+   的链上耗时与吞吐量
+2. 单独评估：
+   `recordAccess`
+   的链上耗时与吞吐量
+3. 避免把“整条业务链路耗时”误写成“区块链上链吞吐量”
+
+执行：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\measure_onchain_write_tps.ps1
+```
+
+可选参数：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\measure_onchain_write_tps.ps1 -Samples 10 -Mode all
+```
+
+说明：
+
+1. 它默认通过 SSH 到：
+   `152.136.167.239`
+2. 默认只做：
+   `串行、小样本`
+   测试
+3. 输出中的：
+   `throughput_tps`
+   才是你要的“上链环节吞吐量”

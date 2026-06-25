@@ -169,9 +169,9 @@ sgcc-trust-data-space/
 2. 当前并不是“整套线上服务常驻运行”的状态。
 3. 如果你要恢复全链路运行，需要按依赖顺序手动拉起并逐项检查内存，而不是一次性全开。
 
-## 2026-06-22 手动恢复结果
+## 2026-06-26 手动恢复结果
 
-在“不恢复任何开机自启”的前提下，已经验证下面这组手动运行组合可以稳定拉起：
+在“不恢复任何开机自启”的前提下，已经再次验证下面这组手动运行组合可以稳定拉起：
 
 1. 三套 FISCO BCOS 节点：
    - `qingdao` RPC `20200/20201`
@@ -190,6 +190,18 @@ sgcc-trust-data-space/
 5. `platform-api`
    - `127.0.0.1:8088`
 
+本轮恢复过程还额外确认了一个关键事实：
+
+1. `platform-api` 起不来时，先不要怀疑 Verkle 代码本身
+2. `2026-06-25` 这次真正的阻塞点是：
+   `MySQL 3306 未监听`
+3. 恢复 `mysql.service` 后，
+   `platform-api`
+   已可正常启动
+4. 再手动拉起
+   `privacy-service`
+   后，整条真实后端链路再次跑通
+
 恢复完成后的资源状态实测约为：
 
 1. `Mem used` 约 `3.1 GiB`
@@ -202,6 +214,34 @@ sgcc-trust-data-space/
 2. 继续禁止前端 `vite` / `npm run dev` 常驻
 3. 前端试用和演示优先走 `platform-api:8088` 托管静态页面
 4. 继续禁止任何未经审核的 `Restart=always` 自启
+
+## 2026-06-26 Verkle 真实后端复测结果
+
+本轮在恢复：
+
+1. `MySQL 3306`
+2. `privacy-service 8010`
+3. `platform-api 8088`
+
+之后，已再次通过：
+
+`scripts/run_verkle_backend_smoke.ps1`
+
+跑通一轮真实后端联调。
+
+关键结论：
+
+1. `platform-api / system-status`
+   已恢复全绿
+2. 上传、Verkle 视图、Verkle 审计、允许访问、拒绝访问
+   已全部通过
+3. `recordAccess`
+   的 `bool` 参数类型问题已修复
+4. “每次上传都边改库边逐条上链”的实现
+   已先收口成：
+   `批次锚定`
+5. 当前这组后端服务在 `30 GiB + 16 GiB swap` 环境下实测内存稳定，
+   未再复现此前 `vite/esbuild` 导致的资源疯涨
 
 ## 当前 Verkle 联调状态
 

@@ -18,6 +18,9 @@ import com.sgcc.platform.entity.AccessAuditEntity;
 import com.sgcc.platform.entity.DataResourceEntity;
 import com.sgcc.platform.mapper.AccessAuditMapper;
 import com.sgcc.platform.mapper.DataResourceMapper;
+import com.sgcc.platform.onchain.AnchorResourceWriteCommand;
+import com.sgcc.platform.onchain.OnChainWriteDispatcher;
+import com.sgcc.platform.onchain.RecordAccessWriteCommand;
 import com.sgcc.platform.verkle.CommitmentResult;
 import com.sgcc.platform.verkle.StoredProofEnvelope;
 import com.sgcc.platform.verkle.VerkleEngineGateway;
@@ -46,6 +49,7 @@ public class DemoResourceService {
     private final AccessAuditMapper accessAuditMapper;
     private final StringRedisTemplate redisTemplate;
     private final BlockchainGatewayService blockchainGatewayService;
+    private final OnChainWriteDispatcher onChainWriteDispatcher;
     private final PolicyEvaluator policyEvaluator;
     private final PostgresShadowService postgresShadowService;
     private final ObjectMapper objectMapper;
@@ -236,13 +240,13 @@ public class DemoResourceService {
         }
 
         logAccess(resource, request, verified, granted, message);
-        blockchainGatewayService.recordAccess(
+        onChainWriteDispatcher.dispatch(new RecordAccessWriteCommand(
                 resource.getDataId(),
                 request.getRequesterOrg(),
                 request.getRequesterRole(),
                 verified,
                 granted
-        );
+        ));
         postgresShadowService.logAccess(resource.getDataId(), resource.getRegion(), message);
 
         return AccessResponse.builder()
@@ -399,6 +403,7 @@ public class DemoResourceService {
                 .toList();
         CommitmentResult commitments = verkleEngineGateway.commitments(items);
         String root = commitments.getRoot();
+        LocalDateTime now = LocalDateTime.now();
 
         for (DataResourceEntity resource : resources) {
             StoredProofEnvelope envelope =
@@ -409,10 +414,10 @@ public class DemoResourceService {
 
             resource.setRoot(root);
             resource.setRedisProofKey(proofKey);
-            resource.setUpdatedAt(LocalDateTime.now());
+            resource.setUpdatedAt(now);
             dataResourceMapper.updateById(resource);
-            blockchainGatewayService.anchorResource(region, resource, root);
         }
+        anchorRegionBatch(region, resources, root);
         return root;
     }
 
@@ -422,6 +427,7 @@ public class DemoResourceService {
             return "";
         }
         String relayRoot = resources.get(0).getRoot();
+        LocalDateTime now = LocalDateTime.now();
         for (DataResourceEntity resource : resources) {
             resource.setRelayRoot(relayRoot);
             dataResourceMapper.update(
@@ -429,11 +435,23 @@ public class DemoResourceService {
                     new LambdaUpdateWrapper<DataResourceEntity>()
                             .eq(DataResourceEntity::getDataId, resource.getDataId())
                             .set(DataResourceEntity::getRelayRoot, relayRoot)
-                            .set(DataResourceEntity::getUpdatedAt, LocalDateTime.now())
+                            .set(DataResourceEntity::getUpdatedAt, now)
             );
-            blockchainGatewayService.anchorResource("relay", resource, relayRoot);
         }
+        anchorRegionBatch("relay", resources, relayRoot);
         return relayRoot;
+    }
+
+    private void anchorRegionBatch(String chainName, List<DataResourceEntity> resources, String root) {
+        if (resources.isEmpty()) {
+            return;
+        }
+        // Current contract stores one anchor record per dataId. We keep the same business
+        // semantics, but commit the refreshed root in a bounded batch instead of interleaving
+        // chain writes with every per-row SQL/proof update.
+        for (DataResourceEntity resource : resources) {
+            onChainWriteDispatcher.dispatch(new AnchorResourceWriteCommand(chainName, resource, root));
+        }
     }
 
     private List<DataResourceEntity> listRegionResources(String region) {
