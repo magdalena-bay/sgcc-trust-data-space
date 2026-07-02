@@ -369,3 +369,174 @@
 一句话结论：
 
 `单机单链 8 节点在当前这台 8核30GiB 服务器上是可行的，但它主要解决的是链拓扑硬性要求，不是 10000+ 吞吐量的核心答案；Verkle 底层必须继续保留，而且不会因为节点扩成 8 个而被削弱，反而应该继续作为链下证明与链上 root 锚定之间的核心结构。`
+
+---
+
+## 12. 2026-06-26 实测补充结论
+
+截至 `2026-06-26`，这份方案已经不再只是纸面设计。
+
+已经实际完成下面这组隔离验证：
+
+1. 在服务器上生成并短时拉起三条 `8` 节点链：
+   - `qingdao`
+   - `weifang`
+   - `relay`
+2. 在不覆盖现有 `5100 / 5101 / 5102` 的前提下，
+   额外拉起三套隔离 `WeBASE-Front`
+3. 再用一套隔离 `platform-api:8089`
+   对接这组三链 `8` 节点环境
+4. 最后把：
+   `upload -> verkle -> verkle-audit -> allowed access -> denied access`
+   整条链路重新跑通
+
+### 12.1 当前已验证通过的 8 节点隔离目录
+
+链目录：
+
+1. `/home/ubuntu/blockchain/fisco-8node/qingdao/127.0.0.1`
+2. `/home/ubuntu/blockchain/fisco-8node/weifang/127.0.0.1`
+3. `/home/ubuntu/blockchain/fisco-8node/relay/127.0.0.1`
+
+隔离 WeBASE 目录：
+
+1. `/home/ubuntu/webase-front-instances-8node/qingdao`
+2. `/home/ubuntu/webase-front-instances-8node/weifang`
+3. `/home/ubuntu/webase-front-instances-8node/relay`
+
+隔离数据库：
+
+1. `sgcc_platform_8node`
+
+隔离后端端口：
+
+1. `8089`
+
+### 12.2 当前已验证通过的 8 节点隔离端口
+
+链 RPC 端口：
+
+1. `qingdao`
+   - `21200 ~ 21207`
+2. `weifang`
+   - `21400 ~ 21407`
+3. `relay`
+   - `21600 ~ 21607`
+
+隔离 WeBASE 端口：
+
+1. `qingdao -> 5110`
+2. `weifang -> 5111`
+3. `relay -> 5112`
+
+### 12.3 当前已经真实跑通的结果
+
+本轮隔离 `8` 节点联调样本是：
+
+`DQA20260626014459QD`
+
+关键结果已经实际验证：
+
+1. `platform-api:8089 / health = ok`
+2. `system-status` 中：
+   - `qingdao = true`
+   - `weifang = true`
+   - `relay = true`
+3. 三条链的 `contractRegistry`
+   都已独立部署
+4. `crossChainContractAddressReuseDetected = false`
+5. `verkle.chainAnchorExists = true`
+6. `verkle-audit.overallPassed = true`
+7. 正确权限访问：
+   - `granted = true`
+   - `verified = true`
+8. 错误权限访问：
+   - `granted = false`
+   - `verified = true`
+
+这意味着：
+
+`当前三链 8 节点隔离环境已经完成了一轮真实 Verkle-compatible 全链路闭环验证。`
+
+### 12.4 这轮 8 节点隔离联调踩到的两个关键坑
+
+#### A. WeBASE 不能直接复用旧 2 节点链的 SDK 证书
+
+这次已经实际确认：
+
+1. 直接复制旧 `WeBASE-Front` 实例目录后
+2. 只改 `application.yml` 中的端口和 `peers`
+3. 还不够
+
+因为 `conf/ca.crt`、`conf/sdk.crt`、`conf/sdk.key`
+如果仍然是旧 `2` 节点链的那一套，
+`WeBASE-Front` 会在 Spring 初始化后又主动退出。
+
+正确做法已经验证通过：
+
+`每条 8 节点链对应的 WeBASE-Front，必须换用这条链自己生成的 sdk 证书。`
+
+也就是要把：
+
+1. `/home/ubuntu/blockchain/fisco-8node/qingdao/127.0.0.1/sdk/*`
+2. `/home/ubuntu/blockchain/fisco-8node/weifang/127.0.0.1/sdk/*`
+3. `/home/ubuntu/blockchain/fisco-8node/relay/127.0.0.1/sdk/*`
+
+分别覆盖到对应实例的：
+
+1. `conf/ca.crt`
+2. `conf/sdk.crt`
+3. `conf/sdk.key`
+
+#### B. `.server.env` 中带 `&` 的 JDBC URL 必须加引号
+
+这次还实际确认了另一个非常隐蔽的问题：
+
+如果 `.server.env.8node` 里把：
+
+`SGCC_MYSQL_URL=jdbc:mysql://...?...&...&...`
+
+直接裸写进 shell `source` 文件，
+那么 `&` 会被 shell 当成控制符，
+导致环境变量并没有按预期生效。
+
+这次的直接后果就是：
+
+1. `8089` 看起来是隔离后端
+2. 但实际仍然连到了默认库
+3. 结果出现：
+   - 新库一直空
+   - 数据却写进旧库
+
+正确做法已经验证通过：
+
+`所有包含 & 的 JDBC URL，必须在 env 文件中加单引号或双引号。`
+
+示例：
+
+```bash
+export SGCC_MYSQL_URL='jdbc:mysql://127.0.0.1:3306/sgcc_platform_8node?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8'
+```
+
+### 12.5 当前资源结论
+
+这轮 `8` 节点隔离联调过程中，
+服务器依然保持了可控资源状态。
+
+实测大致为：
+
+1. `Mem used` 约 `6 GiB`
+2. `Mem available` 约 `24 GiB`
+3. `Swap used` 约 `0`
+
+所以现在可以明确写成：
+
+`8 vCPU / 30 GiB RAM / 15 GiB Swap`
+
+在不启 GUI、不启服务器端 `vite`、不让开发态 watcher 常驻的前提下，
+已经足以稳定承载：
+
+1. 现有 `2` 节点主业务环境
+2. 一套隔离 `8` 节点实验环境
+
+但仍然不建议让这两套环境长期一起满负荷常驻。

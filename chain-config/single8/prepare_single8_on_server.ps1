@@ -52,11 +52,14 @@ if [ "$BUILD_FLAG" = "true" ]; then
   rm -rf "$REMOTE_BASE/generated"
   cd "$REMOTE_TOOLS_DIR"
   bash build_chain.local.sh -p "$P2P_START,$RPC_START" -l "127.0.0.1:$NODE_COUNT" -o "$REMOTE_BASE/generated" -e "$BINARY_PATH"
+  find "$REMOTE_BASE/generated/127.0.0.1" -maxdepth 2 -name config.genesis -type f -print0 | while IFS= read -r -d '' genesis; do
+    sed -i "s/^    auth_admin_account=.*/    auth_admin_account=0x0000000000000000000000000000000000000000/" "$genesis"
+  done
 fi
 
 echo "[5/6] Start flag: $START_FLAG"
 if [ "$START_FLAG" = "true" ]; then
-  cd "$REMOTE_BASE/generated"
+  cd "$REMOTE_BASE/generated/127.0.0.1"
   bash start_all.sh
 fi
 

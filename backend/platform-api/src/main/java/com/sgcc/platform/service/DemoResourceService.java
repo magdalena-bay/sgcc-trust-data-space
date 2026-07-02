@@ -18,9 +18,6 @@ import com.sgcc.platform.entity.AccessAuditEntity;
 import com.sgcc.platform.entity.DataResourceEntity;
 import com.sgcc.platform.mapper.AccessAuditMapper;
 import com.sgcc.platform.mapper.DataResourceMapper;
-import com.sgcc.platform.onchain.AnchorResourceWriteCommand;
-import com.sgcc.platform.onchain.OnChainWriteDispatcher;
-import com.sgcc.platform.onchain.RecordAccessWriteCommand;
 import com.sgcc.platform.verkle.CommitmentResult;
 import com.sgcc.platform.verkle.StoredProofEnvelope;
 import com.sgcc.platform.verkle.VerkleEngineGateway;
@@ -29,6 +26,7 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +47,6 @@ public class DemoResourceService {
     private final AccessAuditMapper accessAuditMapper;
     private final StringRedisTemplate redisTemplate;
     private final BlockchainGatewayService blockchainGatewayService;
-    private final OnChainWriteDispatcher onChainWriteDispatcher;
     private final PolicyEvaluator policyEvaluator;
     private final PostgresShadowService postgresShadowService;
     private final ObjectMapper objectMapper;
@@ -203,19 +200,22 @@ public class DemoResourceService {
         // Redis stores the Verkle-compatible proof as HD_i -> ProofD_i.
         String proofKey = proofKey(resource.getHdValue());
         String proofJson = redisTemplate.opsForValue().get(proofKey);
-        StoredProofEnvelope proofEnvelope = verkleEngineGateway.readEnvelope(proofJson);
+        if (proofJson == null) {
+            proofJson = "{}";
+        }
+        StoredProofEnvelope proofEnvelope = readProofEnvelope(proofJson);
 
         Map<String, Object> anchor = blockchainGatewayService.getAnchor(resource.getRegion(), resource.getDataId());
         boolean verified = false;
-        if (proofEnvelope != null
-                && Boolean.TRUE.equals(anchor.get("exists"))
+        if (Boolean.TRUE.equals(anchor.get("exists"))
                 && resource.getPackageHash().equals(anchor.get("packageHash"))
-                && resource.getPolicyHash().equals(anchor.get("policyHash"))) {
+                && resource.getPolicyHash().equals(anchor.get("policyHash"))
+                && proofEnvelope != null) {
             verified = verkleEngineGateway.verify(
                     resource.getDataId(),
                     resource.getHdValue(),
                     proofEnvelope,
-                    String.valueOf(anchor.get("root"))
+                    stringValue(anchor.get("root"))
             );
         }
 
@@ -240,13 +240,13 @@ public class DemoResourceService {
         }
 
         logAccess(resource, request, verified, granted, message);
-        onChainWriteDispatcher.dispatch(new RecordAccessWriteCommand(
+        blockchainGatewayService.recordAccess(
                 resource.getDataId(),
                 request.getRequesterOrg(),
                 request.getRequesterRole(),
                 verified,
                 granted
-        ));
+        );
         postgresShadowService.logAccess(resource.getDataId(), resource.getRegion(), message);
 
         return AccessResponse.builder()
@@ -264,14 +264,14 @@ public class DemoResourceService {
     public ResourceVerkleResponse getVerkle(String dataId) {
         DataResourceEntity resource = findResource(dataId);
         String proofKey = proofKey(resource.getHdValue());
-        StoredProofEnvelope proofEnvelope = verkleEngineGateway.readEnvelope(redisTemplate.opsForValue().get(proofKey));
+        String proofJson = redisTemplate.opsForValue().get(proofKey);
         Map<String, Object> anchor = blockchainGatewayService.getAnchor(resource.getRegion(), resource.getDataId());
 
         return ResourceVerkleResponse.builder()
                 .dataId(resource.getDataId())
                 .hdValue(resource.getHdValue())
                 .proofKey(proofKey)
-                .proofJson(verkleEngineGateway.writeEnvelope(proofEnvelope))
+                .proofJson(proofJson)
                 .regionRoot(resource.getRoot())
                 .relayRoot(resource.getRelayRoot())
                 .chainRoot(String.valueOf(anchor.get("root")))
@@ -282,9 +282,8 @@ public class DemoResourceService {
     public ResourceVerkleAuditResponse getVerkleAudit(String dataId) {
         DataResourceEntity resource = findResource(dataId);
         String proofKey = proofKey(resource.getHdValue());
-        StoredProofEnvelope redisProofEnvelope = verkleEngineGateway.readEnvelope(redisTemplate.opsForValue().get(proofKey));
-        boolean redisProofExists = redisProofEnvelope != null;
-        String redisProofJson = verkleEngineGateway.writeEnvelope(redisProofEnvelope);
+        String redisProofJson = redisTemplate.opsForValue().get(proofKey);
+        boolean redisProofExists = redisProofJson != null && !redisProofJson.isBlank();
 
         String packageJson = ipfsClient.getJson(resource.getCid());
         Map<String, Object> packagePayload = readMap(packageJson);
@@ -311,12 +310,17 @@ public class DemoResourceService {
         boolean mysqlHdMatchesPackageHash = safeEquals(resource.getHdValue(), resource.getPackageHash());
         boolean mysqlPackageHashMatchesIpfsHash = safeEquals(resource.getPackageHash(), ipfsPackageHash);
         boolean mysqlPolicyHashMatchesIpfsPolicyHash = safeEquals(resource.getPolicyHash(), ipfsPolicyHash);
-        boolean redisProofMatchesRebuilt = redisProofExists
-                && verkleEngineGateway.equivalent(redisProofEnvelope, rebuiltProofEnvelope);
+        boolean redisProofMatchesRebuilt = false;
+        if (redisProofExists && rebuiltProofEnvelope != null) {
+            redisProofMatchesRebuilt = verkleEngineGateway.equivalent(
+                    readProofEnvelope(redisProofJson),
+                    rebuiltProofEnvelope
+            );
+        }
 
-        boolean proofVerifiesAgainstMysqlRoot = redisProofExists && verifyProof(resource, redisProofEnvelope, resource.getRoot());
-        boolean proofVerifiesAgainstRegionChainRoot = redisProofExists && verifyProof(resource, redisProofEnvelope, regionChainRoot);
-        boolean proofVerifiesAgainstRelayChainRoot = redisProofExists && verifyProof(resource, redisProofEnvelope, relayChainRoot);
+        boolean proofVerifiesAgainstMysqlRoot = redisProofExists && verifyProof(resource, redisProofJson, resource.getRoot());
+        boolean proofVerifiesAgainstRegionChainRoot = redisProofExists && verifyProof(resource, redisProofJson, regionChainRoot);
+        boolean proofVerifiesAgainstRelayChainRoot = redisProofExists && verifyProof(resource, redisProofJson, relayChainRoot);
 
         boolean rebuiltRootMatchesMysqlRoot = safeEquals(rebuiltRoot, resource.getRoot());
         boolean rebuiltRootMatchesRegionChainRoot = safeEquals(rebuiltRoot, regionChainRoot);
@@ -403,21 +407,20 @@ public class DemoResourceService {
                 .toList();
         CommitmentResult commitments = verkleEngineGateway.commitments(items);
         String root = commitments.getRoot();
-        LocalDateTime now = LocalDateTime.now();
 
         for (DataResourceEntity resource : resources) {
-            StoredProofEnvelope envelope =
+            StoredProofEnvelope proofEnvelope =
                     verkleEngineGateway.buildEnvelope(commitments, resource.getDataId(), resource.getHdValue());
-            String proofJson = verkleEngineGateway.writeEnvelope(envelope);
+            String proofJson = verkleEngineGateway.writeEnvelope(proofEnvelope);
             String proofKey = proofKey(resource.getHdValue());
             redisTemplate.opsForValue().set(proofKey, proofJson);
 
             resource.setRoot(root);
             resource.setRedisProofKey(proofKey);
-            resource.setUpdatedAt(now);
+            resource.setUpdatedAt(LocalDateTime.now());
             dataResourceMapper.updateById(resource);
+            blockchainGatewayService.anchorResource(region, resource, root);
         }
-        anchorRegionBatch(region, resources, root);
         return root;
     }
 
@@ -427,7 +430,6 @@ public class DemoResourceService {
             return "";
         }
         String relayRoot = resources.get(0).getRoot();
-        LocalDateTime now = LocalDateTime.now();
         for (DataResourceEntity resource : resources) {
             resource.setRelayRoot(relayRoot);
             dataResourceMapper.update(
@@ -435,23 +437,11 @@ public class DemoResourceService {
                     new LambdaUpdateWrapper<DataResourceEntity>()
                             .eq(DataResourceEntity::getDataId, resource.getDataId())
                             .set(DataResourceEntity::getRelayRoot, relayRoot)
-                            .set(DataResourceEntity::getUpdatedAt, now)
+                            .set(DataResourceEntity::getUpdatedAt, LocalDateTime.now())
             );
+            blockchainGatewayService.anchorResource("relay", resource, relayRoot);
         }
-        anchorRegionBatch("relay", resources, relayRoot);
         return relayRoot;
-    }
-
-    private void anchorRegionBatch(String chainName, List<DataResourceEntity> resources, String root) {
-        if (resources.isEmpty()) {
-            return;
-        }
-        // Current contract stores one anchor record per dataId. We keep the same business
-        // semantics, but commit the refreshed root in a bounded batch instead of interleaving
-        // chain writes with every per-row SQL/proof update.
-        for (DataResourceEntity resource : resources) {
-            onChainWriteDispatcher.dispatch(new AnchorResourceWriteCommand(chainName, resource, root));
-        }
     }
 
     private List<DataResourceEntity> listRegionResources(String region) {
@@ -493,16 +483,23 @@ public class DemoResourceService {
         };
     }
 
+    private StoredProofEnvelope readProofEnvelope(String proofJson) {
+        return verkleEngineGateway.readEnvelope(proofJson);
+    }
+
     private String proofKey(String hdValue) {
         return "verkle-proof:" + hdValue;
     }
 
-    private boolean verifyProof(DataResourceEntity resource, StoredProofEnvelope proofEnvelope, String root) {
+    private boolean verifyProof(DataResourceEntity resource, String proofJson, String root) {
         if (root == null || root.isBlank()) {
             return false;
         }
-        return proofEnvelope != null
-                && verkleEngineGateway.verify(resource.getDataId(), resource.getHdValue(), proofEnvelope, root);
+        StoredProofEnvelope proofEnvelope = readProofEnvelope(proofJson);
+        if (proofEnvelope == null) {
+            return false;
+        }
+        return verkleEngineGateway.verify(resource.getDataId(), resource.getHdValue(), proofEnvelope, root);
     }
 
     private Map<String, Object> readMap(String json) {

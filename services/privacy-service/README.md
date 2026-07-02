@@ -66,7 +66,7 @@ curl http://127.0.0.1:8010/health
 1. `2026-06-22` 起，服务器端先不要把 `privacy-service` 重新设为 `systemd --user` 自启。
 2. 如果未来要重新托管，必须先确认 service 文件路径已经改到当前代码目录，并且没有隐藏的 `Restart=always` 风险。
 
-可选环境变量：
+必需环境变量：
 
 - `SGCC_PRIVACY_MASTER_KEY_HEX`
   32 字节十六进制主密钥，用于包装 `DEK`

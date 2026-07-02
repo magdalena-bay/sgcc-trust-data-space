@@ -85,6 +85,59 @@
 
 `再多加几台节点就会自然到 10000+`
 
+补充更新：
+
+在继续推进“正式主路径 = 批量摘要 / 批量根锚定”之后，已经新增得到一组更贴近当前目标路线的 benchmark 基线：
+
+### 2.4 anchor_digest 正式主路径专项基线
+
+测试条件：
+
+1. `chain = qingdao`
+2. `count = 20000`
+3. `batchSize = 10000`
+4. `concurrency = 2`
+
+结果：
+
+1. `acceptedMs = 2`
+2. `completedMs = 3205`
+3. `acceptedTps = 10000000`
+4. `completedTps = 6240.25`
+5. `txCount = 2`
+6. `failedCount = 0`
+
+这组数据要这样理解：
+
+1. `acceptedTps`
+   只是“逻辑事件入 benchmark 请求”的瞬时指标，不能拿它充当最终比赛口径
+2. 当前真正应该盯的是：
+   `completedTps = 6240.25`
+3. 这证明：
+   `batch_digest / root checkpoint`
+   已经明显优于旧的同步逐资源上链路径
+4. 但这也同时说明：
+   `现在还没有达到 10000+`
+
+### 2.5 当前必须明确淘汰的旧候选路线
+
+这轮再次验证后，必须写死：
+
+1. `upload_checkpoint`
+   旧口径不是 `10000+` 最终候选路线
+2. 这轮它再次在远端返回了真实：
+   `HTTP 500`
+3. 所以后续不应再把主要精力放在：
+   `继续磨逐资源同步上链`
+
+而应明确转向：
+
+1. `batch_digest`
+2. `root checkpoint`
+3. `outbox consumer worker`
+4. `batch planner`
+5. `聚合锚定`
+
 ---
 
 ## 3. 为什么当前架构到不了 10000+

@@ -103,6 +103,11 @@ public class BlockchainGatewayService {
         Object raw = post(resolveChainBaseUrl(chainName), "/trans/handle", payload);
         List<String> values = objectMapper.convertValue(raw, new TypeReference<>() {
         });
+        if (values == null || values.size() < 9) {
+            throw new IllegalStateException(
+                    "unexpected anchor payload for chain " + chainName + ", dataId " + dataId + ": " + raw
+            );
+        }
 
         Map<String, Object> anchor = new HashMap<>();
         anchor.put("region", values.get(0));
@@ -179,7 +184,7 @@ public class BlockchainGatewayService {
         try {
             getAnchor(chainName, "__HEALTH_PROBE__");
             return true;
-        } catch (IllegalStateException ex) {
+        } catch (RuntimeException ex) {
             return false;
         }
     }

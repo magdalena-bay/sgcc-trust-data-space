@@ -34,12 +34,16 @@ def _canonical_json(value: dict) -> str:
 
 
 def _master_key() -> bytes:
-    # The demo master key is only used to wrap the per-resource DEK so the end-to-end
-    # flow can run before a true MA-CP-ABE implementation is introduced.
     configured = os.getenv("SGCC_PRIVACY_MASTER_KEY_HEX", "").strip()
-    if configured:
-        return bytes.fromhex(configured)
-    return hashlib.sha256(b"sgcc-demo-policy-master-key").digest()
+    if not configured:
+        raise RuntimeError("SGCC_PRIVACY_MASTER_KEY_HEX is required and must not use a repo default")
+    try:
+        raw = bytes.fromhex(configured)
+    except ValueError as exc:
+        raise RuntimeError("SGCC_PRIVACY_MASTER_KEY_HEX must be valid hex") from exc
+    if len(raw) != 32:
+        raise RuntimeError("SGCC_PRIVACY_MASTER_KEY_HEX must contain exactly 32 bytes (64 hex chars)")
+    return raw
 
 
 def encrypt_plaintext(plaintext: str) -> Dict[str, str]:
@@ -275,6 +279,11 @@ def package_ciphertext(request: PackageCiphertextRequest) -> dict:
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+@app.on_event("startup")
+def validate_secret_configuration() -> None:
+    _master_key()
 
 
 @app.post("/api/privacy/encrypt-plaintext")

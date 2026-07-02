@@ -16,6 +16,25 @@
 2. `./SINGLE_CHAIN_8_NODE_PLAN.md`
    只讨论单机单链 `8` 节点的部署与资源方案
 
+补充说明：
+
+截至 `2026-06-26`，项目正式主路径已经切到：
+
+`batch_digest / root checkpoint`
+
+所以后续凡是涉及：
+
+1. 吞吐量推进
+2. 链写 worker
+3. 批次聚合
+4. 区块链模块排期
+
+都必须默认围绕这条正式主路径来设计，不再以：
+
+`逐资源同步 anchorResource`
+
+作为 `10000+` 目标路线。
+
 ## Recommended Structure
 
 ```text

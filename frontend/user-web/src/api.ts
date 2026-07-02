@@ -6,13 +6,12 @@ import type {
   ResourceVerkleAudit,
   ResourceVerkle,
   SystemStatus,
-  UploadResponse,
   UploadRequest
 } from "./types";
 
 export const API_BASE =
   import.meta.env.VITE_API_BASE ||
-  (typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:8088` : "http://127.0.0.1:8088");
+  (typeof window !== "undefined" ? window.location.origin : "http://127.0.0.1:8089");
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -50,8 +49,8 @@ export function fetchSystemStatus(): Promise<SystemStatus> {
   return request<SystemStatus>("/api/demo/system-status");
 }
 
-export function uploadResource(payload: UploadRequest): Promise<UploadResponse> {
-  return request<UploadResponse>("/api/demo/upload", {
+export function uploadResource(payload: UploadRequest) {
+  return request("/api/demo/upload", {
     method: "POST",
     body: JSON.stringify(payload)
   });

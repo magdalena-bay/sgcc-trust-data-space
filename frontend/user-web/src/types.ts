@@ -13,17 +13,6 @@ export interface UploadRequest {
   dataHash?: string;
 }
 
-export interface UploadResponse {
-  dataId: string;
-  region: string;
-  cid: string;
-  hdValue: string;
-  packageHash: string;
-  root: string;
-  relayRoot: string;
-  message: string;
-}
-
 export interface ResourceSummary {
   dataId: string;
   region: string;
@@ -112,17 +101,4 @@ export interface SystemStatus {
   weifangWebaseUrl: string;
   relayWebaseUrl: string;
   components: Record<string, boolean>;
-  storageStatus?: Record<string, boolean>;
-  chainStatus?: Record<string, boolean>;
-  contractRegistry?: Record<string, string>;
-  contractRegistryCount?: Record<string, number>;
-  crossChainContractAddressReuseDetected?: boolean;
-}
-
-export interface DeploymentSummary {
-  localRepo: string;
-  frontendDir: string;
-  backendStaticDir: string;
-  remoteHost?: string;
-  remoteRepoDir?: string;
 }
